@@ -167,21 +167,38 @@ if run_analysis:
         }
         st.dataframe(pd.DataFrame(seg_data))
 
-        # --- Critical Power estimate across fatigue profiles ---
-        k_profiles = {
-            "Highly aerobic / ultra runner": 0.014,
-            "Balanced distance runner": 0.018,
-            "Anaerobic / sprinter": 0.020,
-        }
+        # --- Critical Power estimate across fatigue profiles (empirical model) ---
+        cp_results = compute_cp_5k_range(avg_pow)
 
-        cp_results = {
-            label: compute_cp_exponential(avg_pow, t5k, k=k)
-            for label, k in k_profiles.items()
-        }
+        st.subheader("Critical Power Results")
+        st.markdown("""
+Choose the profile that best matches your physiology and racing style.
+For most trained runners, *Balanced distance runner (typical)* is the right choice.
+""")
+
+        cp_table = pd.DataFrame(
+            {
+                "Runner Type": list(cp_results.keys()),
+                "Estimated CP (W)": [f"{cp:.1f}" for cp in cp_results.values()],
+                "Description": [
+                    "Exceptional endurance, low fatigue over long durations.",
+                    "Well-trained distance runner with balanced fatigue resistance.",
+                    "High anaerobic capacity, strong over short efforts but fades sooner."
+                ],
+            }
+        )
+        st.dataframe(cp_table, hide_index=True)
 
         cp_min = min(cp_results.values())
         cp_max = max(cp_results.values())
-        cp_mid = cp_results["Balanced distance runner"]
+        cp_mid = cp_results["Balanced distance runner (typical)"]
+
+        st.markdown(
+            f"**Estimated CP range:** {cp_min:.1f} – {cp_max:.1f} W "
+            f"(typical profile ≈ {cp_mid:.1f} W)"
+        )
+        st.caption("Range reflects different fatigue rates among runner types.")
+
 
         # --- Display CP table ---
         st.subheader("Critical Power Results")
