@@ -183,34 +183,40 @@ This tool analyzes your running power data from Stryd or Garmin to estimate your
 the maximum power you can theoretically sustain indefinitely — and your **W′ (anaerobic work capacity)**.
 
 You can calculate CP using two supported protocols:
+""")
 
-1. **3/12-minute Critical Power Test (Linear Model)**  
-   - Finds the highest average power over 3 minutes and 12 minutes.  
-   - If a slightly longer segment has equal or higher power, it’s included automatically.  
-   - Uses the *linear CP model*:  
-     \[
-     P = CP + \frac{W′}{t}
-     \]
-   - From the two test points, CP and W′ are solved simultaneously.
+    st.markdown("#### 1️⃣ 3/12-minute Critical Power Test (Linear Model)")
+    st.markdown("""
+- Finds the highest average power over 3 minutes and 12 minutes.  
+- If a slightly longer segment has equal or higher power, it’s included automatically.  
+- Uses the *linear CP model*:  
+""")
+    st.latex(r"P = CP + \frac{W'}{t}")
+    st.markdown("""
+- From the two test points (3 min & 12 min), the tool solves for CP and W′.
+""")
 
-2. **5K Time Trial (Exponential Model)**  
-   - Finds the segment of ~5,000 meters with the highest average power.  
-   - If a slightly longer section yields equal or higher power, it’s extended automatically.  
-   - Uses an *exponential model* of fatigue:  
-     \[
-     P = CP + (P_{max} - CP)e^{-k t}
-     \]
-   - A constant **k = 0.018** is used by default (based on Steve Palladino’s methodology).
+    st.markdown("#### 2️⃣ 5 K Time Trial (Exponential Model)")
+    st.markdown("""
+- Finds the segment of ~5,000 m with the highest average power.  
+- If a slightly longer section yields equal or higher power, it’s extended automatically.  
+- Uses an *exponential fatigue model*:  
+""")
+    st.latex(r"P = CP + (P_{max} - CP)e^{-k t}")
+    st.markdown("""
+- A constant **k = 0.018** is used by default (based on Steve Palladino’s methodology).
+""")
 
----
-
+    st.markdown("---")
+    st.markdown("""
 ### ⚙️ How segments are detected
 - The uploaded file is scanned for rolling windows of fixed length (e.g., 180 s or 720 s).  
 - The window with the highest average power is selected as the **best effort**.  
-- Then, the algorithm checks if extending the segment slightly (up to 60 s by default) keeps the average power equal or higher — if so, it expands the segment to include that.
+- The algorithm then checks if extending the segment slightly (up to 60 s by default) keeps the average power equal or higher — if so, it expands that segment.
+""")
 
----
-
+    st.markdown("---")
+    st.markdown("""
 ### 📈 Outputs explained
 | Metric | Description |
 |---------|-------------|
@@ -221,16 +227,17 @@ You can calculate CP using two supported protocols:
 | **CP (Critical Power)** | Theoretical threshold you can sustain indefinitely (aerobic limit). |
 | **W′** | Finite anaerobic work capacity above CP, expressed in kilojoules (kJ). |
 | **Power above CP** | How much harder your effort was compared to CP — typically 2–5 % higher for a 5 K race. |
+""")
 
----
-
+    st.markdown("---")
+    st.markdown("""
 ### 💡 Practical notes
 - For reliable CP results, perform tests on flat terrain in similar conditions.  
 - Use the same **Stryd weight** value as configured in your pod/app.  
-- The 3/12 test is best for frequent CP recalculations; the 5 K trial for performance checks.  
-- CP is not static — it adapts with your training and recovery.
+- The 3/12 test is ideal for frequent CP recalculations; the 5 K trial for performance validation.  
+- CP is dynamic — it adapts with training and recovery.
 
 ---
 
-*Based on the work of Steve Palladino’s Power Project and Stryd’s CP methodology.*
+*Based on the work of Steve Palladino’s Power Project and Stryd’s Critical Power methodology.*
 """)
