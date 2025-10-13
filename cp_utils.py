@@ -70,7 +70,7 @@ def best_power_for_distance(df, distance_m):
     # --- Detect column ---
     dist_col = None
     for col in df.columns:
-        if "watch distance" in col.lower():
+        if "Watch Distance (meters)" in col.lower():
             dist_col = col
             break
         if "stryd distance" in col.lower():
