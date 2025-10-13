@@ -33,17 +33,41 @@ From these two data points, both **CP** and **W′** are solved directly.
 ---
 
 #### **B. 5 K Time Trial (Empirical Model)**
-If you upload a 5 K time trial file, the tool identifies the **highest-power 5 000 m segment** (using the *watch distance* field, not elapsed time).
 
-The 5 K average power is then converted to CP using **empirical fatigue scaling factors**, inspired by Steve Palladino’s Power Project calculator:
+When you upload a 5 K time-trial file, the tool automatically identifies the **highest-power 5 000 m segment** using the *Watch Distance (meters)* field (not elapsed time), ensuring accuracy when using a calibrated Stryd footpod.
 
-| Runner Type | Typical CP vs 5 K Power | Description |
-|--------------|------------------------|--------------|
-| **Highly aerobic / ultra runner (slow fatigue)** | ~ 98.5 % | Exceptional endurance; power stays close to race power. |
-| **Balanced distance runner (typical)** | ~ 97.5 % | Well-trained athlete; typical 5 K – marathon profile. |
-| **Anaerobic / sprinter (fast fatigue)** | ~ 96.5 % | Strong short-term power; fatigues faster on long efforts. |
+The average power from that segment — denoted \( P_{5K} \) — is then converted into an estimated **Critical Power (CP)** using empirically derived fatigue-scaling factors inspired by Steve Palladino’s *Power Project* methodology.
 
-This gives a **CP range** rather than a single value — just like Palladino’s calculator — showing realistic variability between athlete types.
+---
+
+##### **Empirical Formula**
+
+\[
+CP = P_{5K} \times f
+\]
+
+where  
+- \( P_{5K} \) = average power over the best 5 000 m segment  
+- \( f \) = empirical fatigue factor (depends on runner profile)
+
+---
+
+##### **Runner-Type Profiles**
+
+| Runner Type | Fatigue Factor \( f \) | CP as % of 5 K Power | Description |
+|--------------|:----------------------:|:--------------------:|-------------|
+| **Highly aerobic / ultra runner** | 0.985 | ≈ 98.5 % | Exceptional endurance; power stays close to race intensity. |
+| **Balanced distance runner (typical)** | 0.975 | ≈ 97.5 % | Well-trained distance runner; typical fatigue behavior. |
+| **Anaerobic / sprinter** | 0.965 | ≈ 96.5 % | High short-term power; faster fatigue over long efforts. |
+
+---
+
+##### **Result Range**
+
+The app reports a **CP range** spanning the three fatigue profiles.  
+The “balanced distance runner” value (~97.5 %) is displayed as the **typical CP estimate**,  
+while the upper and lower bounds illustrate realistic variation based on your personal endurance profile.
+
 
 ---
 
