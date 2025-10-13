@@ -1,29 +1,31 @@
 import streamlit as st
 import pandas as pd
 from cp_analysis import (
-    load_csv_auto, detect_test_type,
-    best_avg_power, best_power_for_distance,
+    load_csv_auto, best_avg_power, best_power_for_distance,
     extend_best_segment, compute_cp_linear, compute_cp_exponential
 )
 from datetime import timedelta
 import matplotlib.pyplot as plt
 import numpy as np
 
+# --- App Title ---
 st.title("⚡ Critical Power Analysis Tool")
+st.caption("Analyze your running power data to estimate Critical Power (CP) and W′.")
 
-st.write("Upload your Stryd or Garmin CSV export to estimate Critical Power (CP) and W′.")
-
+# --- Sidebar Inputs ---
 with st.sidebar:
     st.header("Settings")
     file = st.file_uploader("📂 Upload CSV file", type=["csv"])
-    weight = st.number_input(
-        "🏃 Body weight (kg)",
+
+    stryd_weight = st.number_input(
+        "Stryd weight (kg)",
         min_value=30.0,
         max_value=150.0,
         step=0.1,
         value=None,
-        placeholder="Enter your body weight"
+        placeholder="Enter the weight configured in your Stryd app"
     )
+
     test_choice = st.radio(
         "Select test type:",
         [
@@ -32,26 +34,18 @@ with st.sidebar:
         ],
         horizontal=False
     )
+
     st.markdown("---")
-    run_analysis = st.button("Run Analysis")
+    run_analysis = st.button("🚀 Run Analysis")
 
-
-if "3/12" in test_choice:
-    mode = "1"
-else:
-    mode = "2"
-
-# --- Step 4: Show 'Run Analysis' button ---
-st.markdown("---")
-run_analysis = st.button("Run Analysis")
-
-# --- Step 5: Only proceed when everything is ready and button clicked ---
+# --- Main Screen ---
 if run_analysis:
+    # --- Validation ---
     if file is None:
         st.warning("Please upload a CSV file before running the analysis.")
         st.stop()
-    if weight is None or weight == 0:
-        st.warning("Please enter your body weight before running the analysis.")
+    if stryd_weight is None or stryd_weight == 0:
+        st.warning("Please enter your Stryd weight before running the analysis.")
         st.stop()
 
     # --- Load and prepare data ---
@@ -65,15 +59,15 @@ if run_analysis:
     df["power"] = df[power_col]
 
     if "w/kg" in power_col.lower():
-        df["power"] = df["power"] * weight
+        df["power"] = df["power"] * stryd_weight
 
     df = df.sort_values("timestamp").reset_index(drop=True)
 
-    # --- Analysis Results ---
-    st.markdown("### Analysis Results")
+    # --- Results header ---
+    st.markdown("## 📊 Analysis Results")
 
-    if mode == "1":
-        # ---- 3/12-minute Test ---- #
+    # --- 3/12-minute Test ---
+    if "3/12" in test_choice:
         best3, s3, e3 = best_avg_power(df, 180)
         best12, s12, e12 = best_avg_power(df, 720)
         ext3 = extend_best_segment(df, s3, e3, best3)
@@ -94,10 +88,11 @@ if run_analysis:
         ax.set_xlabel("Duration (min)")
         ax.set_ylabel("Power (W)")
         ax.set_title("Linear CP Model")
+        ax.set_ylim(min(powers) - 10, max(powers) + 10)
         st.pyplot(fig)
 
+    # --- 5K Time Trial ---
     else:
-        # ---- 5K Time Trial ---- #
         best5k, s5k, e5k = best_power_for_distance(df, 5000)
         ext5k = extend_best_segment(df, s5k, e5k, best5k)
         t5k = int(ext5k[3])
@@ -111,3 +106,5 @@ if run_analysis:
         st.write(f"**Total time:** {total_time_str}  ({pace_per_km} per km)")
         st.write(f"**5K avg power:** {avg_pow:.1f} W")
         st.write(f"**Critical Power:** {cp_est:.1f} W  (−{diff:.1f} W, {diff/avg_pow*100:.1f} %)")
+
+    st.info("💡 Tip: Use consistent test conditions (course, weather, shoes) for reliable comparisons.")
