@@ -190,11 +190,5 @@ if run_analysis:
             f"(typical profile ≈ {cp_mid:.1f} W)"
         )
 
-        st.caption(
-            "Profiles are based on empirical fatigue scaling factors "
-            "(~0.965 – 0.985 of 5 K power)."
-        )
-
-
 st.markdown("---")
 render_documentation()
