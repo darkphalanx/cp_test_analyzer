@@ -87,7 +87,7 @@ CP_{\text{sprinter}} = 338.8 \times 0.965 = 326.9 \text{ W}
 \]
 
 Thus, the app reports an **estimated CP range of 326.9 – 333.7 W**,  
-with a *typical profile* estimate of ≈ **330.3 W**.
+with a *typical profile* estimate of ≈ **330.3 W**. 
 
 ---
 
