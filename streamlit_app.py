@@ -5,6 +5,7 @@ from cp_analysis import (
     extend_best_segment, compute_cp_linear, compute_cp_exponential, compute_cp_5k_range
 )
 from datetime import timedelta
+from docs import render_documentation
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -197,3 +198,6 @@ For most trained runners, *Balanced distance runner (typical)* is the right choi
             f"(typical profile ≈ {cp_mid:.1f} W)"
         )
         st.caption("Range reflects different fatigue rates among runner types.")
+
+st.markdown("---")
+render_documentation()
