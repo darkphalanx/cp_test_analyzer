@@ -66,37 +66,45 @@ def compute_cp_linear(p1, t1, p2, t2):
 
 
 def best_power_for_distance(df, distance_m):
-    """Find best avg power over a given distance (uses Watch Distance or Stryd Distance)."""
-    # --- Detect column ---
+    """
+    Find the best average power over a given distance (meters).
+    Uses 'Watch Distance (meters)' or 'Stryd Distance (meters)' columns.
+    """
+    # --- Detect the correct distance column ---
+    possible_cols = [
+        "Watch Distance (meters)",
+        "Stryd Distance (meters)",
+    ]
     dist_col = None
     for col in df.columns:
-        if "Watch Distance (meters)" in col.lower():
+        if any(name.lower() in col.lower() for name in possible_cols):
             dist_col = col
             break
-        if "stryd distance" in col.lower():
-            dist_col = col
-            break
+
     if dist_col is None:
         raise ValueError(
-            "No distance column found (expected 'Watch Distance' or 'Stryd Distance')."
+            "No distance column found. Expected 'Watch Distance (meters)' "
+            "or 'Stryd Distance (meters)'."
         )
 
-    # --- Normalize decimals and clean values ---
+    # --- Clean and normalize distance values ---
     df[dist_col] = (
         df[dist_col]
         .astype(str)
         .str.replace(",", ".", regex=False)
-        .str.replace("[^0-9.]", "", regex=True)  # remove possible units or text
+        .str.replace("[^0-9.]", "", regex=True)
+        .replace("", np.nan)
     )
-    df[dist_col] = pd.to_numeric(df[dist_col], errors="coerce").ffill()
+
+    df[dist_col] = pd.to_numeric(df[dist_col], errors="coerce").ffill().bfill()
     df["dist"] = df[dist_col].astype(float)
     df = df.reset_index(drop=True)
 
-    # --- Sanity check ---
-    if df["dist"].max() < 1000:
+    # --- Safety check ---
+    if df["dist"].max() < distance_m:
         raise ValueError(
             f"Distance values look too small (max {df['dist'].max():.1f} m). "
-            "Check if your CSV uses comma decimals or wrong column."
+            "Check if your CSV uses comma decimals or truncated data."
         )
 
     # --- Find best rolling segment ---
