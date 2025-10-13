@@ -127,7 +127,7 @@ def best_power_for_distance(df, distance_m):
     return best_power, best_start, best_end
 
 
-def compute_cp_exponential(p, t, k=0.018, p_max=None):
+def compute_cp_exponential(p, t, k, p_max=None):
     """
     Estimate Critical Power (CP) from a single test using the exponential model:
         P = CP + (Pmax - CP)e^{-k t}
