@@ -30,8 +30,13 @@ if file:
     df = df.dropna(subset=["timestamp"])
     power_col = [c for c in df.columns if "power" in c.lower()][0]
     df["power"] = df[power_col]
+
+    # --- Validate weight before applying ---
     if "w/kg" in power_col.lower():
-        df["power"] *= weight
+        if weight is None:
+            st.warning("Please enter your body weight before analyzing this file.")
+            st.stop()
+    df["power"] = df["power"] * weight
     df = df.sort_values("timestamp").reset_index(drop=True)
 
     # --- Test type detection and confirmation ---
