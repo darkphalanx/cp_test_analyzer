@@ -13,28 +13,28 @@ st.title("⚡ Critical Power Analysis Tool")
 
 st.write("Upload your Stryd or Garmin CSV export to estimate Critical Power (CP) and W′.")
 
-# --- Step 1: Upload file ---
-file = st.file_uploader("Upload CSV file", type=["csv"])
+with st.sidebar:
+    st.header("Settings")
+    file = st.file_uploader("📂 Upload CSV file", type=["csv"])
+    weight = st.number_input(
+        "🏃 Body weight (kg)",
+        min_value=30.0,
+        max_value=150.0,
+        step=0.1,
+        value=None,
+        placeholder="Enter your body weight"
+    )
+    test_choice = st.radio(
+        "Select test type:",
+        [
+            "3/12-minute Critical Power Test (linear model)",
+            "5K Time Trial (exponential model)"
+        ],
+        horizontal=False
+    )
+    st.markdown("---")
+    run_analysis = st.button("Run Analysis")
 
-# --- Step 2: Enter weight ---
-weight = st.number_input(
-    "Body weight (kg)",
-    min_value=30.0,
-    max_value=150.0,
-    step=0.1,
-    value=None,
-    placeholder="Enter your body weight"
-)
-
-# --- Step 3: Choose test type ---
-test_choice = st.radio(
-    "Choose which test you performed:",
-    [
-        "3/12-minute Critical Power Test (linear model)",
-        "5K Time Trial (exponential model)"
-    ],
-    horizontal=False
-)
 
 if "3/12" in test_choice:
     mode = "1"
