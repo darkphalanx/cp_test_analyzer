@@ -9,6 +9,39 @@ from datetime import timedelta
 from docs import render_documentation
 import numpy as np
 
+# --- Helper: Styled Result Card ---
+def show_result_card(title: str, main_value: str, subtext: str = "", color: str = "#0b5394"):
+    """
+    Display a stylized result card for key outcomes.
+    - title: main heading (e.g. "Critical Power (3/12 Test)")
+    - main_value: emphasized numeric result
+    - subtext: secondary info (e.g. W′)
+    - color: accent color (default = blue)
+    """
+    st.markdown("---")
+    st.markdown(
+        f"""
+        <div style="
+            text-align:center;
+            padding: 1.5rem;
+            background-color: #f8f9fa;
+            border-radius: 10px;
+            border: 2px solid #e0e0e0;
+            box-shadow: 0 0 10px rgba(0,0,0,0.05);
+            margin-top: 1.5rem;
+        ">
+            <h2 style="color:{color}; margin-bottom:0.5rem;">🏁 {title}</h2>
+            <p style="font-size:1.6rem; font-weight:700; margin:0;">
+                {main_value}
+            </p>
+            <p style="font-size:1.1rem; color:#555; margin-top:0.3rem;">
+                {subtext}
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 st.set_page_config(page_title="Critical Power Analysis Tool", layout="wide")
 # --- App Title ---
 st.title("⚡ Critical Power Analysis Tool")
@@ -116,9 +149,13 @@ if run_analysis:
         st.dataframe(pd.DataFrame(seg_data), width='stretch')
 
         # --- Display computed CP/W' ---
-        st.subheader("Critical Power Results")
-        st.write(f"**Critical Power (CP):** {cp:.1f} W")
-        st.write(f"**W′:** {w_prime/1000:.2f} kJ")
+        show_result_card(
+            "Critical Power (3/12 Test)",
+            f"{cp:.1f} W",
+            f"W′ = {w_prime/1000:.2f} kJ",
+            color="#1a73e8"  # blue accent
+        )
+
 
     # ==============================================================
     # 5K Time Trial
@@ -185,9 +222,11 @@ if run_analysis:
         cp_max = max(cp_results.values())
         cp_mid = list(cp_results.values())[1]  # Balanced profile
 
-        st.markdown(
-            f"**Estimated CP range:** {cp_min:.1f} – {cp_max:.1f} W "
-            f"(typical profile ≈ {cp_mid:.1f} W)"
+        show_result_card(
+            "Estimated Critical Power Range (5K Time Trial)",
+            f"{cp_min:.1f} – {cp_max:.1f} W",
+            f"Typical profile ≈ {cp_mid:.1f} W",
+            color="#ff8800"  # orange accent
         )
 
 st.markdown("---")
