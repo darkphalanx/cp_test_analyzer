@@ -68,41 +68,41 @@ def compute_cp_linear(p1, t1, p2, t2):
 def best_power_for_distance(df, distance_m):
     """
     Find the best average power over a given distance (meters).
-    Supports 'Watch Distance (meters)' and 'Stryd Distance (meters)' columns,
-    with any decimal separator, spaces, or unit text.
+    Always uses the 'Watch Distance (meters)' column, since this
+    is the calibrated source when the Stryd footpod is configured properly.
     """
-    import re
+    import numpy as np
+    import pandas as pd
 
-    # --- Detect the correct distance column ---
-    possible_cols = ["Watch Distance (meters)", "Stryd Distance (meters)"]
-    dist_col = next((c for c in df.columns if any(x.lower() in c.lower() for x in possible_cols)), None)
+    # --- Validate column existence ---
+    if "Watch Distance (meters)" not in df.columns:
+        raise ValueError(
+            "Column 'Watch Distance (meters)' not found. "
+            "Please export a file containing Watch Distance data."
+        )
 
-    if dist_col is None:
-        raise ValueError("No distance column found. Expected 'Watch Distance (meters)' or 'Stryd Distance (meters)'.")
+    dist_col = "Watch Distance (meters)"
 
-    # --- Normalize and clean ---
+    # --- Clean and normalize values ---
     df[dist_col] = (
         df[dist_col]
         .astype(str)
-        .str.replace(",", ".", regex=False)                   # comma decimals
-        .str.replace(r"[^\d\.]", "", regex=True)              # remove units, spaces, NBSP, etc.
+        .str.replace(",", ".", regex=False)           # Convert comma decimals
+        .str.replace(r"[^\d\.]", "", regex=True)      # Remove units/spaces
         .replace("", np.nan)
     )
 
-    # Convert safely to numeric
+    # Convert to float, fill gaps
     df[dist_col] = pd.to_numeric(df[dist_col], errors="coerce").ffill().bfill()
     df["dist"] = df[dist_col].astype(float)
     df = df.reset_index(drop=True)
 
-    # --- Sanity log (for debugging distance parsing) ---
-    dist_min, dist_max = df["dist"].min(), df["dist"].max()
-    print(f"[DEBUG] Loaded distance range: {dist_min:.1f} → {dist_max:.1f} m")
-
-    # --- Validate ---
-    if dist_max < 1000:
+    # --- Validate range ---
+    dist_max = df["dist"].max()
+    if dist_max < distance_m:
         raise ValueError(
-            f"Distance column not parsed correctly (max {dist_max:.1f} m). "
-            "Check for thousands separators or hidden characters."
+            f"Distance values look too small (max {dist_max:.1f} m). "
+            "Check if your CSV contains valid Watch Distance data."
         )
 
     # --- Find best rolling segment ---
@@ -119,6 +119,7 @@ def best_power_for_distance(df, distance_m):
             start_idx, end_idx = i, j
 
     return best_power, start_idx, end_idx
+
 
 
 # ---------- 5K Scaling Model ---------- #
