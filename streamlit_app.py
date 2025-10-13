@@ -27,40 +27,12 @@ if file:
         df["power"] *= weight
     df = df.sort_values("timestamp").reset_index(drop=True)
 
-    # --- Test type detection and confirmation ---
     st.subheader("Test Type Detection")
-
-    detected_type = detect_test_type(df)
-
-    if detected_type == "3_12":
-        detected_label = "3/12-minute Critical Power test"
-    else:
-        detected_label = "5 k time trial"
-
-    st.markdown(f"**Detected:** {detected_label}")
-
-    confirm = st.radio(
-        "Is this correct?",
-        ["Yes", "No"],
-        index=0,
-        horizontal=True,
-        help="If 'No', select the correct test type manually below."
-    )
-
-    if confirm == "No":
-        manual_choice = st.radio(
-            "Select test type manually:",
-            ["3/12-minute test", "5 k time trial"],
-            index=0,
-            horizontal=False
-        )
-        test_type = "3_12" if "3/12" in manual_choice else "5k"
-    else:
-        test_type = detected_type
-
+    test_type = detect_test_type(df)
+    override = st.radio("Is this correct?", ["Yes", "No"], horizontal=True)
+    if override == "No":
+        test_type = st.selectbox("Select test type manually", ["3_12", "5k"])
     mode = "1" if test_type == "3_12" else "2"
-
-    st.markdown("---")
 
     st.divider()
 
