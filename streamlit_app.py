@@ -29,7 +29,7 @@ with st.sidebar:
     test_choice = st.radio(
         "Select test type:",
         [
-            "3/12-minute Critical Power Test",
+            "3/12-minute CP Test",
             "5K Time Trial"
         ],
         horizontal=False
