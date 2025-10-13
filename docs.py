@@ -55,15 +55,6 @@ This gives a **CP range** rather than a single value — just like Palladino’s
 
 ---
 
-### ⚙️ 3️⃣ Units & Input Notes
-
-- Upload your `.csv` file (comma-separated).  
-- Power data can be in **watts** or **W/kg**.  
-  - If it’s in *W/kg*, enter your **Stryd weight** (the weight configured in your Stryd app).  
-- Distances are read from “Watch Distance (meters)” or “Stryd Distance (meters)”.
-
----
-
 ### 📘 4️⃣ Interpretation
 
 | Metric | What it tells you |
@@ -71,17 +62,6 @@ This gives a **CP range** rather than a single value — just like Palladino’s
 | **Critical Power (CP)** | Sustainable threshold — roughly 40–60 min race power. |
 | **W′** | Anaerobic work capacity (in kJ) — energy you can expend above CP before exhaustion. |
 | **Pace / km** | Equivalent running pace for the detected segment. |
-| **Power above CP (% difference)** | How much harder the test effort was than your sustainable threshold. |
-
----
-
-### 🧠 5️⃣ Quick Reference – Typical Relationships
-| Event | Typical Duration | % of CP | Purpose |
-|--------|------------------|---------|----------|
-| 1 K repeat | 3–4 min | 110–120 % | Anaerobic tolerance |
-| 5 K race | 18–22 min | 103–107 % | Threshold calibration |
-| 10 K race | 38–45 min | 100–102 % | CP-level effort |
-| Half marathon | 80–100 min | 92–96 % | Endurance benchmark |
 
 ---
 
@@ -99,9 +79,4 @@ When you later perform a structured 3/12-minute test, it often helps to **valida
 This balanced approach helps you avoid over-estimating CP while still tracking real improvements as they happen.
 
 ---
-
-**💡 Tip:**  
-Use the *3/12-minute test* when you can execute structured intervals,  
-and the *5 K test* when you prefer a real-race simulation.  
-Either method gives a valid CP estimate — just ensure you run them at maximal, steady effort.
 """)
