@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from cp_analysis import (
     load_csv_auto, best_avg_power, best_power_for_distance,
-    extend_best_segment, compute_cp_linear, compute_cp_exponential
+    extend_best_segment, compute_cp_linear, compute_cp_exponential, compute_cp_5k_range
 )
 from datetime import timedelta
 import matplotlib.pyplot as plt
@@ -138,8 +138,6 @@ if run_analysis:
         ext5k = extend_best_segment(df, s5k, e5k, best5k)
         t5k = int(ext5k[3])
         avg_pow = ext5k[0]
-        cp_est = compute_cp_exponential(avg_pow, t5k)
-        diff = avg_pow - cp_est
 
         # --- Determine distance column ---
         dist_col = None
@@ -198,92 +196,3 @@ For most trained runners, *Balanced distance runner (typical)* is the right choi
             f"(typical profile ≈ {cp_mid:.1f} W)"
         )
         st.caption("Range reflects different fatigue rates among runner types.")
-
-
-        # --- Display CP table ---
-        st.subheader("Critical Power Results")
-        cp_table = pd.DataFrame(
-            {
-                "Runner Type": list(cp_results.keys()),
-                "k": [f"{k:.3f}" for k in k_profiles.values()],
-                "Estimated CP (W)": [f"{cp:.1f}" for cp in cp_results.values()],
-            }
-        )
-        st.dataframe(cp_table, hide_index=True)
-
-        st.markdown(
-            f"**Estimated CP range:** {cp_min:.1f} – {cp_max:.1f} W  "
-            f"(midpoint {cp_mid:.1f} W for a balanced profile)"
-        )
-        st.caption("Range reflects different fatigue rates (k-values) per runner type.")
-
-
-# ==============================================================
-# 📘 Help & Documentation
-# ==============================================================
-
-with st.expander("ℹ️ How this tool works (click to expand)"):
-    st.markdown("""
-### 🧠 Overview
-This tool analyzes your running power data from Stryd or Garmin to estimate your **Critical Power (CP)** —  
-the maximum power you can theoretically sustain indefinitely — and your **W′ (anaerobic work capacity)**.
-
-You can calculate CP using two supported protocols:
-""")
-
-    st.markdown("#### 1️⃣ 3/12-minute Critical Power Test (Linear Model)")
-    st.markdown("""
-- Finds the highest average power over 3 minutes and 12 minutes.  
-- If a slightly longer segment has equal or higher power, it’s included automatically.  
-- Uses the *linear CP model*:  
-""")
-    st.latex(r"P = CP + \frac{W'}{t}")
-    st.markdown("""
-- From the two test points (3 min & 12 min), the tool solves for CP and W′.
-""")
-
-    st.markdown("#### 2️⃣ 5 K Time Trial (Exponential Model)")
-    st.markdown("""
-- Finds the segment of ~5,000 m with the highest average power.  
-- If a slightly longer section yields equal or higher power, it’s extended automatically.  
-- Uses an *exponential fatigue model*:  
-""")
-    st.latex(r"P = CP + (P_{max} - CP)e^{-k t}")
-    st.markdown("""
-- A constant **k = 0.018** is used by default (based on Steve Palladino’s methodology).
-""")
-
-    st.markdown("---")
-    st.markdown("""
-### ⚙️ How segments are detected
-- The uploaded file is scanned for rolling windows of fixed length (e.g., 180 s or 720 s).  
-- The window with the highest average power is selected as the **best effort**.  
-- The algorithm then checks if extending the segment slightly (up to 60 s by default) keeps the average power equal or higher — if so, it expands that segment.
-""")
-
-    st.markdown("---")
-    st.markdown("""
-### 📈 Outputs explained
-| Metric | Description |
-|---------|-------------|
-| **Distance** | Actual covered distance within the detected best segment. |
-| **Duration** | Actual elapsed time for that segment. |
-| **Pace** | Average pace for that segment. |
-| **Average Power** | Mean running power in watts for that segment. |
-| **CP (Critical Power)** | Theoretical threshold you can sustain indefinitely (aerobic limit). |
-| **W′** | Finite anaerobic work capacity above CP, expressed in kilojoules (kJ). |
-| **Power above CP** | How much harder your effort was compared to CP — typically 2–5 % higher for a 5 K race. |
-""")
-
-    st.markdown("---")
-    st.markdown("""
-### 💡 Practical notes
-- For reliable CP results, perform tests on flat terrain in similar conditions.  
-- Use the same **Stryd weight** value as configured in your pod/app.  
-- The 3/12 test is ideal for frequent CP recalculations; the 5 K trial for performance validation.  
-- CP is dynamic — it adapts with training and recovery.
-
----
-
-*Based on the work of Steve Palladino’s Power Project and Stryd’s Critical Power methodology.*
-""")
