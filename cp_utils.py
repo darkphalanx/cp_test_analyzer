@@ -10,12 +10,22 @@ import numpy as np
 # ---------- CSV Handling ---------- #
 
 def load_csv_auto(file):
-    """Load CSV file and detect separator automatically."""
-    try:
-        df = pd.read_csv(file, sep=None, engine="python")
-    except Exception:
-        df = pd.read_csv(file, sep=",")
-    return df, ("," if "," in open(file.name).read(200) else ";")
+    """
+    Load a CSV uploaded through Streamlit and automatically detect the separator.
+    Works safely with UTF-8 encoding and both comma or semicolon delimited files.
+    """
+    import io
+
+    # Read a short preview to detect delimiter
+    sample = file.getvalue().decode("utf-8", errors="ignore")[:500]
+    sep = ";" if sample.count(";") > sample.count(",") else ","
+
+    # Reset pointer and read full file
+    file.seek(0)
+    df = pd.read_csv(io.StringIO(file.getvalue().decode("utf-8", errors="ignore")), sep=sep)
+
+    return df
+
 
 # ---------- Core Calculations ---------- #
 
