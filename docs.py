@@ -6,7 +6,7 @@ def render_documentation():
         st.markdown(r"""
 ## ⚡ Critical Power Analysis – How It Works
 
-This tool estimates your **Critical Power (CP)** — the highest power you can sustain without fatigue rapidly accumulating — based on **running power data** from a `.csv` file exported from Stryd or Garmin.
+This tool estimates your **Critical Power (CP)** — the highest power you can sustain without fatigue rapidly accumulating — based on **running power data** from a `.csv` file exported from Stryd.
 
 ---
 
@@ -19,9 +19,7 @@ You perform two all-out efforts:
 
 The tool finds the **highest average power** over those durations and uses the **linear CP model**:
 
-\\[
-P = CP + \\frac{W′}{t}
-\\]
+st.latex(r"P = CP + \frac{W′}{t}")
 
 where:
 - *P* = mean power (W)  
