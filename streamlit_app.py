@@ -74,9 +74,11 @@ if run_analysis:
         ext12 = extend_best_segment(df, s12, e12, best12)
         cp, w_prime = compute_cp_linear(ext3[0], 180, ext12[0], 720)
 
-        st.subheader("Results – 3/12 Minute Test")
-        st.write(f"**3 min avg power:** {ext3[0]:.1f} W")
-        st.write(f"**12 min avg power:** {ext12[0]:.1f} W")
+        actual_dur3 = int(ext3[3])
+        actual_dur12 = int(ext12[3])
+
+        st.write(f"**3-min segment:** {ext3[0]:.1f} W  (actual duration {timedelta(seconds=actual_dur3)})")
+        st.write(f"**12-min segment:** {ext12[0]:.1f} W  (actual duration {timedelta(seconds=actual_dur12)})")
         st.write(f"**Critical Power:** {cp:.1f} W")
         st.write(f"**W′:** {w_prime/1000:.2f} kJ")
 
