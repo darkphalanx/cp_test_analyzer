@@ -7,7 +7,6 @@ from cp_utils import (
 
 from datetime import timedelta
 from docs import render_documentation
-import matplotlib.pyplot as plt
 import numpy as np
 
 st.set_page_config(page_title="Critical Power Analysis Tool", layout="wide")
@@ -120,18 +119,6 @@ if run_analysis:
         st.subheader("Critical Power Results")
         st.write(f"**Critical Power (CP):** {cp:.1f} W")
         st.write(f"**W′:** {w_prime/1000:.2f} kJ")
-
-        # --- Plot CP line ---
-        fig, ax = plt.subplots()
-        durations = np.array([180, 720])
-        powers = np.array([ext3[0], ext12[0]])
-        ax.scatter(durations / 60, powers, color="red")
-        ax.plot(durations / 60, cp + (w_prime / durations))
-        ax.set_xlabel("Duration (min)")
-        ax.set_ylabel("Power (W)")
-        ax.set_title("Linear CP Model")
-        ax.set_ylim(min(powers) - 10, max(powers) + 10)
-        st.pyplot(fig)
 
     # ==============================================================
     # 5K Time Trial
