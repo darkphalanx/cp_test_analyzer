@@ -113,7 +113,7 @@ if run_analysis:
             "Pace (/km)": [str(pace3) if pace3 else "–", str(pace12) if pace12 else "–"],
             "Avg Power (W)": [f"{ext3[0]:.1f}", f"{ext12[0]:.1f}"],
         }
-        st.dataframe(pd.DataFrame(seg_data), use_container_width=True)
+        st.dataframe(pd.DataFrame(seg_data), width=True)
 
         # --- Display computed CP/W' ---
         st.subheader("Critical Power Results")
@@ -124,7 +124,6 @@ if run_analysis:
     # 5K Time Trial
     # ==============================================================
     else:
-        st.write(df["Watch Distance (meters)"].head(10))
         best5k, s5k, e5k = best_power_for_distance(df, 5000)
         ext5k = extend_best_segment(df, s5k, e5k, best5k)
         t5k = int(ext5k[3])
@@ -154,7 +153,7 @@ if run_analysis:
             "Pace (/km)": [str(pace_per_km)],
             "Avg Power (W)": [f"{avg_pow:.1f}"],
         }
-        st.dataframe(pd.DataFrame(seg_data), use_container_width=True)
+        st.dataframe(pd.DataFrame(seg_data), width=True)
 
         # --- Critical Power estimate across fatigue profiles (empirical model) ---
         cp_results = compute_cp_5k_range(avg_pow)
@@ -179,7 +178,7 @@ if run_analysis:
             }
         )
 
-        st.dataframe(cp_table, use_container_width=True, hide_index=True)
+        st.dataframe(cp_table, width=True, hide_index=True)
 
         # Range summary
         cp_min = min(cp_results.values())
