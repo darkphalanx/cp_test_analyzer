@@ -68,41 +68,31 @@ def compute_cp_linear(p1, t1, p2, t2):
 def best_power_for_distance(df, distance_m):
     """
     Find the best average power over a given distance (meters).
-    Always uses the 'Watch Distance (meters)' column, since this
-    is the calibrated source when the Stryd footpod is configured properly.
+    Always uses the 'Watch Distance (meters)' column.
+    Assumes decimal point format (e.g., 2.57, 4.93, ...).
     """
     import numpy as np
     import pandas as pd
 
-    # --- Validate column existence ---
+    # --- Validate column ---
     if "Watch Distance (meters)" not in df.columns:
         raise ValueError(
-            "Column 'Watch Distance (meters)' not found. "
-            "Please export a file containing Watch Distance data."
+            "Missing 'Watch Distance (meters)' column. "
+            "Make sure your CSV export includes it."
         )
 
     dist_col = "Watch Distance (meters)"
 
-    # --- Clean and normalize values ---
-    df[dist_col] = (
-        df[dist_col]
-        .astype(str)
-        .str.replace(",", ".", regex=False)           # Convert comma decimals
-        .str.replace(r"[^\d\.]", "", regex=True)      # Remove units/spaces
-        .replace("", np.nan)
-    )
-
-    # Convert to float, fill gaps
-    df[dist_col] = pd.to_numeric(df[dist_col], errors="coerce").ffill().bfill()
-    df["dist"] = df[dist_col].astype(float)
+    # --- Minimal, safe conversion ---
+    df["dist"] = pd.to_numeric(df[dist_col], errors="coerce").ffill().bfill().astype(float)
     df = df.reset_index(drop=True)
 
-    # --- Validate range ---
+    # --- Validation ---
     dist_max = df["dist"].max()
     if dist_max < distance_m:
         raise ValueError(
             f"Distance values look too small (max {dist_max:.1f} m). "
-            "Check if your CSV contains valid Watch Distance data."
+            "Check if your CSV is truncated."
         )
 
     # --- Find best rolling segment ---
@@ -119,7 +109,6 @@ def best_power_for_distance(df, distance_m):
             start_idx, end_idx = i, j
 
     return best_power, start_idx, end_idx
-
 
 
 # ---------- 5K Scaling Model ---------- #
