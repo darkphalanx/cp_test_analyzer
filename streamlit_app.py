@@ -1,9 +1,10 @@
 import streamlit as st
 import pandas as pd
-from cp_analysis import (
+from cp_utils import (
     load_csv_auto, best_avg_power, best_power_for_distance,
-    extend_best_segment, compute_cp_linear, compute_cp_exponential, compute_cp_5k_range
+    extend_best_segment, compute_cp_linear, compute_cp_5k_range
 )
+
 from datetime import timedelta
 from docs import render_documentation
 import matplotlib.pyplot as plt
