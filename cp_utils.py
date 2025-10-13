@@ -15,8 +15,7 @@ def load_csv_auto(file):
         df = pd.read_csv(file, sep=None, engine="python")
     except Exception:
         df = pd.read_csv(file, sep=",")
-    return df
-
+    return df, ("," if "," in open(file.name).read(200) else ";")
 
 # ---------- Core Calculations ---------- #
 
@@ -58,6 +57,7 @@ def compute_cp_linear(p1, t1, p2, t2):
 
 def best_power_for_distance(df, distance_m):
     """Find best avg power over a given distance (uses Watch Distance or Stryd Distance)."""
+    # --- Detect column ---
     dist_col = None
     for col in df.columns:
         if "watch distance" in col.lower():
@@ -67,18 +67,29 @@ def best_power_for_distance(df, distance_m):
             dist_col = col
             break
     if dist_col is None:
-        raise ValueError("No distance column found (expected 'Watch Distance' or 'Stryd Distance').")
+        raise ValueError(
+            "No distance column found (expected 'Watch Distance' or 'Stryd Distance')."
+        )
 
-    # Normalize and clean the distance column
+    # --- Normalize decimals and clean values ---
     df[dist_col] = (
         df[dist_col]
         .astype(str)
         .str.replace(",", ".", regex=False)
-        .astype(float)
+        .str.replace("[^0-9.]", "", regex=True)  # remove possible units or text
     )
-    df["dist"] = df[dist_col].ffill()
+    df[dist_col] = pd.to_numeric(df[dist_col], errors="coerce").ffill()
+    df["dist"] = df[dist_col].astype(float)
+    df = df.reset_index(drop=True)
 
-    # Find best rolling 5K segment
+    # --- Sanity check ---
+    if df["dist"].max() < 1000:
+        raise ValueError(
+            f"Distance values look too small (max {df['dist'].max():.1f} m). "
+            "Check if your CSV uses comma decimals or wrong column."
+        )
+
+    # --- Find best rolling segment ---
     best_power = 0
     start_idx = end_idx = 0
     for i in range(len(df)):
@@ -90,8 +101,8 @@ def best_power_for_distance(df, distance_m):
         if avg_pow > best_power:
             best_power = avg_pow
             start_idx, end_idx = i, j
-    return best_power, start_idx, end_idx
 
+    return best_power, start_idx, end_idx
 
 
 # ---------- 5K Scaling Model ---------- #
