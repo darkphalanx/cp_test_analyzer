@@ -6,7 +6,6 @@ Used by: Streamlit front-end (streamlit_app.py)
 
 import pandas as pd
 import numpy as np
-from datetime import timedelta
 
 # ---------- CSV Handling ---------- #
 
@@ -70,9 +69,16 @@ def best_power_for_distance(df, distance_m):
     if dist_col is None:
         raise ValueError("No distance column found (expected 'Watch Distance' or 'Stryd Distance').")
 
-    df["dist"] = pd.to_numeric(df[dist_col], errors="coerce").ffill()
-    df["dist"] = df["dist"].astype(float)
+    # Normalize and clean the distance column
+    df[dist_col] = (
+        df[dist_col]
+        .astype(str)
+        .str.replace(",", ".", regex=False)
+        .astype(float)
+    )
+    df["dist"] = df[dist_col].ffill()
 
+    # Find best rolling 5K segment
     best_power = 0
     start_idx = end_idx = 0
     for i in range(len(df)):
@@ -85,6 +91,7 @@ def best_power_for_distance(df, distance_m):
             best_power = avg_pow
             start_idx, end_idx = i, j
     return best_power, start_idx, end_idx
+
 
 
 # ---------- 5K Scaling Model ---------- #
