@@ -75,16 +75,19 @@ while the upper and lower bounds show realistic variation based on your personal
 For a 5 K effort with \( P_{5K} = 338.8 \text{ W} \):
 
 \[
-\begin{aligned}
-CP_{\text{ultra}} &= 338.8 \times 0.985 = 333.7 \text{ W} \\
-CP_{\text{balanced}} &= 338.8 \times 0.975 = 330.3 \text{ W} \\
-CP_{\text{sprinter}} &= 338.8 \times 0.965 = 326.9 \text{ W}
-\end{aligned}
+CP_{\text{ultra}} = 338.8 \times 0.985 = 333.7 \text{ W}
+\]
+
+\[
+CP_{\text{balanced}} = 338.8 \times 0.975 = 330.3 \text{ W}
+\]
+
+\[
+CP_{\text{sprinter}} = 338.8 \times 0.965 = 326.9 \text{ W}
 \]
 
 Thus, the app reports an **estimated CP range of 326.9 – 333.7 W**,  
 with a *typical profile* estimate of ≈ **330.3 W**.
-
 
 ---
 
