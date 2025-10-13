@@ -16,31 +16,41 @@ def show_result_card(title: str, main_value: str, subtext: str = "", color: str 
     - title: main heading (e.g. "Critical Power (3/12 Test)")
     - main_value: emphasized numeric result
     - subtext: secondary info (e.g. W′)
-    - color: accent color (default = blue)
+    - color: accent color for highlight (default = blue)
     """
     st.markdown("---")
     st.markdown(
         f"""
         <div style="
             text-align:center;
-            padding: 1.5rem;
-            background-color: #f8f9fa;
+            padding: 1.6rem;
+            background-color: #ffffff;  /* white card for contrast in dark/light mode */
             border-radius: 10px;
             border: 2px solid #e0e0e0;
-            box-shadow: 0 0 10px rgba(0,0,0,0.05);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             margin-top: 1.5rem;
         ">
-            <h2 style="color:{color}; margin-bottom:0.5rem;">🏁 {title}</h2>
-            <p style="font-size:1.6rem; font-weight:700; margin:0;">
+            <h2 style="color:{color}; margin-bottom:0.7rem;">🏁 {title}</h2>
+            <p style="
+                font-size:1.7rem;
+                font-weight:800;
+                color:{color};
+                margin:0;
+            ">
                 {main_value}
             </p>
-            <p style="font-size:1.1rem; color:#555; margin-top:0.3rem;">
+            <p style="
+                font-size:1.15rem;
+                color:#333;
+                margin-top:0.4rem;
+            ">
                 {subtext}
             </p>
         </div>
         """,
         unsafe_allow_html=True,
     )
+
 
 st.set_page_config(page_title="Critical Power Analysis Tool", layout="wide")
 # --- App Title ---
