@@ -124,6 +124,7 @@ if run_analysis:
     # 5K Time Trial
     # ==============================================================
     else:
+        st.write("CSV columns detected:", list(df.columns))
         best5k, s5k, e5k = best_power_for_distance(df, 5000)
         ext5k = extend_best_segment(df, s5k, e5k, best5k)
         t5k = int(ext5k[3])
