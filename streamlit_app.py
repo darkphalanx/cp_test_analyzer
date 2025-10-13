@@ -14,7 +14,14 @@ st.title("⚡ Critical Power Analysis Tool")
 st.write("Upload your Stryd or Garmin CSV export to estimate Critical Power (CP) and W′.")
 
 file = st.file_uploader("Upload CSV file", type=["csv"])
-weight = st.number_input("Body weight (kg)", value=76.0, min_value=30.0, max_value=150.0, step=0.1)
+weight = st.number_input(
+    "Body weight (kg)",
+    min_value=30.0,
+    max_value=150.0,
+    step=0.1,
+    value=None,
+    placeholder="Enter your body weight"
+)
 
 if file:
     df = load_csv_auto(file)
@@ -50,7 +57,9 @@ if file:
     st.markdown("---")
     st.write("Press the button below to analyze your uploaded file.")
 
-    run_analysis = st.button("Run Analysis")
+    if weight is None or weight == 0:
+        st.warning("⚠️ Please enter your body weight before running the analysis.")
+    st.stop()
 
     if run_analysis:
         st.markdown("### Analysis Results")
