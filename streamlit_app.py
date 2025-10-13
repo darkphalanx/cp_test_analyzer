@@ -101,6 +101,13 @@ if file:
         avg_pow = ext5k[0]
         cp_est = compute_cp_exponential(avg_pow, t5k)
         diff = avg_pow - cp_est
-        st.subheader("Results – 5 k Time Trial")
-        st.write(f"**5 k avg power:** {avg_pow:.1f} W")
+
+        # Calculate formatted duration and pace
+        total_time_str = str(timedelta(seconds=int(t5k)))
+        pace_per_km = timedelta(seconds=int(t5k / 5))
+
+        st.subheader("Results – 5K Time Trial")
+        st.write(f"**Total time:** {total_time_str}  ({pace_per_km} per km)")
+        st.write(f"**5K avg power:** {avg_pow:.1f} W")
         st.write(f"**Critical Power:** {cp_est:.1f} W  (−{diff:.1f} W, {diff/avg_pow*100:.1f} %)")
+
