@@ -6,6 +6,7 @@ Used by: Streamlit front-end (streamlit_app.py)
 
 import pandas as pd
 import numpy as np
+import streamlit as st
 
 # ---------- CSV Handling ---------- #
 
@@ -85,7 +86,7 @@ def best_power_for_distance(df, distance_m):
     dist_max = df["dist"].max()
     print(f"Loaded Watch Distance range: 0 → {dist_max:.1f} m")
     if dist_max < distance_m * 0.9:
-        print("Warning: activity shorter than target distance.")
+        st.warning("⚠️ Activity appears shorter than the target distance.")
 
     # --- Efficient sliding window search ---
     best_power = 0
