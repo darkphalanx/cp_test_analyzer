@@ -60,7 +60,7 @@ st.caption("Analyze your running power data to estimate Critical Power (CP) and 
 # --- Sidebar Inputs ---
 with st.sidebar:
     st.header("Settings")
-    file = st.file_uploader("📂 Upload CSV file", type=["csv"])
+    file = st.file_uploader("📂 Upload Stryd CSV file", type=["csv"])
 
     stryd_weight = st.number_input(
         "Stryd weight (kg)",
