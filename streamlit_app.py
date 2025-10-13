@@ -63,10 +63,12 @@ if run_analysis:
 
     df = df.sort_values("timestamp").reset_index(drop=True)
 
-    # --- Results header ---
+    # --- Analysis Results ---
     st.markdown("## 📊 Analysis Results")
 
-    # --- 3/12-minute Test ---
+    # ==============================================================
+    # 3/12-Minute Critical Power Test
+    # ==============================================================
     if "3/12" in test_choice:
         best3, s3, e3 = best_avg_power(df, 180)
         best12, s12, e12 = best_avg_power(df, 720)
@@ -74,14 +76,49 @@ if run_analysis:
         ext12 = extend_best_segment(df, s12, e12, best12)
         cp, w_prime = compute_cp_linear(ext3[0], 180, ext12[0], 720)
 
-        actual_dur3 = int(ext3[3])
-        actual_dur12 = int(ext12[3])
+        # --- Helper for distance column ---
+        dist_col = None
+        for c in df.columns:
+            if "watch distance" in c.lower() or "stryd distance" in c.lower():
+                dist_col = c
+                break
 
-        st.write(f"**3-min segment:** {ext3[0]:.1f} W  (actual duration {timedelta(seconds=actual_dur3)})")
-        st.write(f"**12-min segment:** {ext12[0]:.1f} W  (actual duration {timedelta(seconds=actual_dur12)})")
-        st.write(f"**Critical Power:** {cp:.1f} W")
+        # --- Segment 3 min ---
+        if dist_col:
+            df["dist"] = pd.to_numeric(df[dist_col], errors="coerce").ffill()
+            dist3 = df.loc[ext3[2], "dist"] - df.loc[ext3[1], "dist"]
+        else:
+            dist3 = np.nan
+
+        dur3 = int(ext3[3])
+        pace3 = timedelta(seconds=int(dur3 / (dist3 / 1000))) if pd.notna(dist3) and dist3 > 0 else None
+
+        # --- Segment 12 min ---
+        if dist_col:
+            dist12 = df.loc[ext12[2], "dist"] - df.loc[ext12[1], "dist"]
+        else:
+            dist12 = np.nan
+
+        dur12 = int(ext12[3])
+        pace12 = timedelta(seconds=int(dur12 / (dist12 / 1000))) if pd.notna(dist12) and dist12 > 0 else None
+
+        # --- Display unified segment table ---
+        st.subheader("Segment Details")
+        seg_data = {
+            "Segment": ["3-minute", "12-minute"],
+            "Distance (m)": [f"{dist3:.0f}" if pd.notna(dist3) else "–", f"{dist12:.0f}" if pd.notna(dist12) else "–"],
+            "Duration": [str(timedelta(seconds=dur3)), str(timedelta(seconds=dur12))],
+            "Pace (/km)": [str(pace3) if pace3 else "–", str(pace12) if pace12 else "–"],
+            "Avg Power (W)": [f"{ext3[0]:.1f}", f"{ext12[0]:.1f}"],
+        }
+        st.dataframe(pd.DataFrame(seg_data))
+
+        # --- Display computed CP/W' ---
+        st.subheader("Critical Power Results")
+        st.write(f"**Critical Power (CP):** {cp:.1f} W")
         st.write(f"**W′:** {w_prime/1000:.2f} kJ")
 
+        # --- Plot CP line ---
         fig, ax = plt.subplots()
         durations = np.array([180, 720])
         powers = np.array([ext3[0], ext12[0]])
@@ -93,8 +130,10 @@ if run_analysis:
         ax.set_ylim(min(powers) - 10, max(powers) + 10)
         st.pyplot(fig)
 
+    # ==============================================================
+    # 5K Time Trial
+    # ==============================================================
     else:
-        # ---- 5K Time Trial ---- #
         best5k, s5k, e5k = best_power_for_distance(df, 5000)
         ext5k = extend_best_segment(df, s5k, e5k, best5k)
         t5k = int(ext5k[3])
@@ -102,11 +141,7 @@ if run_analysis:
         cp_est = compute_cp_exponential(avg_pow, t5k)
         diff = avg_pow - cp_est
 
-        # --- Calculate total time & pace ---
-        total_time_str = str(timedelta(seconds=t5k))
-        pace_per_km = timedelta(seconds=int(t5k / 5))
-
-        # --- Determine actual distance from data ---
+        # --- Determine distance column ---
         dist_col = None
         for c in df.columns:
             if "watch distance" in c.lower() or "stryd distance" in c.lower():
@@ -117,19 +152,22 @@ if run_analysis:
             df["dist"] = pd.to_numeric(df[dist_col], errors="coerce").ffill()
             actual_distance = df.loc[ext5k[2], "dist"] - df.loc[ext5k[1], "dist"]
         else:
-            actual_distance = 5000  # fallback if no distance column found
+            actual_distance = 5000
 
-        # --- Format distance ---
-        actual_distance_km = actual_distance / 1000
+        pace_per_km = timedelta(seconds=int(t5k / (actual_distance / 1000)))
 
-        # --- Display results ---
-        st.subheader("Results – 5K Time Trial")
-        st.write(f"**Actual distance:** {actual_distance:.0f} m  ({actual_distance_km:.2f} km)")
-        st.write(f"**Total time:** {total_time_str}  ({pace_per_km} per km)")
-        st.write(f"**Average power:** {avg_pow:.1f} W")
-        st.write(
-            f"**Critical Power:** {cp_est:.1f} W  (−{diff:.1f} W, {diff/avg_pow*100:.1f} %)"
-        )
+        # --- Segment details table ---
+        st.subheader("Segment Details")
+        seg_data = {
+            "Segment": ["5 km Time Trial"],
+            "Distance (m)": [f"{actual_distance:.0f}"],
+            "Duration": [str(timedelta(seconds=t5k))],
+            "Pace (/km)": [str(pace_per_km)],
+            "Avg Power (W)": [f"{avg_pow:.1f}"],
+        }
+        st.dataframe(pd.DataFrame(seg_data))
 
-
-    st.info("💡 Tip: Use consistent test conditions (course, weather, shoes) for reliable comparisons.")
+        # --- Critical Power estimate ---
+        st.subheader("Critical Power Results")
+        st.write(f"**Estimated Critical Power (CP):** {cp_est:.1f} W")
+        st.write(f"**Difference from avg power:** {diff:.1f} W ({diff/avg_pow*100:.1f} %)")
