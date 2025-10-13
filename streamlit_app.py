@@ -28,41 +28,48 @@ if file:
     df = df.sort_values("timestamp").reset_index(drop=True)
 
     # --- Test type detection and confirmation ---
-    st.subheader("Test Type Detection")
+    # --- File & weight inputs already handled above ---
 
-    detected_type = detect_test_type(df)
+    # --- Step 3: Select test type manually ---
+    st.subheader("Select Test Type")
 
-    if detected_type == "3_12":
-        detected_label = "3/12-minute Critical Power test"
-    else:
-        detected_label = "5 k time trial"
-
-    st.markdown(f"**Detected:** {detected_label}")
-
-    confirm = st.radio(
-        "Is this correct?",
-        ["Yes", "No"],
-        index=0,
-        horizontal=True,
-        help="If 'No', select the correct test type manually below."
+    test_choice = st.radio(
+        "Choose which test you performed:",
+        [
+            "3/12-minute Critical Power Test (linear model)",
+            "5K Time Trial (exponential model)"
+        ],
+        horizontal=False
     )
 
-    if confirm == "No":
-        manual_choice = st.radio(
-            "Select test type manually:",
-            ["3/12-minute test", "5 k time trial"],
-            index=0,
-            horizontal=False
-        )
-        test_type = "3_12" if "3/12" in manual_choice else "5k"
+    if "3/12" in test_choice:
+        mode = "1"
     else:
-        test_type = detected_type
-
-    mode = "1" if test_type == "3_12" else "2"
+        mode = "2"
 
     st.markdown("---")
+    st.write("Press the button below to analyze your uploaded file.")
 
-    st.divider()
+    run_analysis = st.button("Run Analysis")
+
+    if run_analysis:
+        st.markdown("### Analysis Results")
+
+        # ---- 3/12-minute Test ---- #
+        if mode == "1":
+            best3, s3, e3 = best_avg_power(df, 180)
+            best12, s12, e12 = best_avg_power(df, 720)
+            ext3 = extend_best_segment(df, s3, e3, best3)
+            ext12 = extend_best_segment(df, s12, e12, best12)
+            cp, w_prime = compute_cp_linear(ext3[0], 180, ext12[0], 720)
+
+            st.subheader("Results – 3/12 Minute Test")
+            st.write(f"**3 min avg power:** {ext3[0]:.1f} W")
+            st.write(f"**12 min avg power:** {ext12[0]:.1f} W")
+            st.write(f"**Critical Power:** {cp:.1f} W")
+            st.write(f"**W′:** {w_prime/1000:.2f} kJ")
+
+            fig, ax = plt.subpl
 
     if mode == "1":
         best3, s3, e3 = best_avg_power(df, 180)
