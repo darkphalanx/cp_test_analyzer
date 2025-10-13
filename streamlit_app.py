@@ -13,20 +13,6 @@ st.title("⚡ Critical Power Analysis Tool")
 
 st.write("Upload your Stryd or Garmin CSV export to estimate Critical Power (CP) and W′.")
 
-file = st.file_uploader("Upload CSV file", type=["csv"])
-weight = st.number_input(
-    "Body weight (kg)",
-    min_value=30.0,
-    max_value=150.0,
-    step=0.1,
-    value=None,
-    placeholder="Enter your body weight"
-)
-
-st.title("⚡ Critical Power Analysis Tool")
-
-st.write("Upload your Stryd or Garmin CSV export to estimate Critical Power (CP) and W′.")
-
 # --- Step 1: Upload file ---
 file = st.file_uploader("Upload CSV file", type=["csv"])
 
