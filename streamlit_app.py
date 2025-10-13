@@ -23,69 +23,71 @@ weight = st.number_input(
     placeholder="Enter your body weight"
 )
 
-if file:
+st.title("⚡ Critical Power Analysis Tool")
+
+st.write("Upload your Stryd or Garmin CSV export to estimate Critical Power (CP) and W′.")
+
+# --- Step 1: Upload file ---
+file = st.file_uploader("Upload CSV file", type=["csv"])
+
+# --- Step 2: Enter weight ---
+weight = st.number_input(
+    "Body weight (kg)",
+    min_value=30.0,
+    max_value=150.0,
+    step=0.1,
+    value=None,
+    placeholder="Enter your body weight"
+)
+
+# --- Step 3: Choose test type ---
+test_choice = st.radio(
+    "Choose which test you performed:",
+    [
+        "3/12-minute Critical Power Test (linear model)",
+        "5K Time Trial (exponential model)"
+    ],
+    horizontal=False
+)
+
+if "3/12" in test_choice:
+    mode = "1"
+else:
+    mode = "2"
+
+# --- Step 4: Show 'Run Analysis' button ---
+st.markdown("---")
+run_analysis = st.button("Run Analysis")
+
+# --- Step 5: Only proceed when everything is ready and button clicked ---
+if run_analysis:
+    if file is None:
+        st.warning("Please upload a CSV file before running the analysis.")
+        st.stop()
+    if weight is None or weight == 0:
+        st.warning("Please enter your body weight before running the analysis.")
+        st.stop()
+
+    # --- Load and prepare data ---
     df = load_csv_auto(file)
+
     time_col = [c for c in df.columns if "time" in c.lower()][0]
     df["timestamp"] = pd.to_datetime(df[time_col], unit="s", errors="coerce")
     df = df.dropna(subset=["timestamp"])
+
     power_col = [c for c in df.columns if "power" in c.lower()][0]
     df["power"] = df[power_col]
 
-    # --- Validate weight before applying ---
     if "w/kg" in power_col.lower():
-        if weight is None:
-            st.warning("Please enter your body weight before analyzing this file.")
-            st.stop()
-    df["power"] = df["power"] * weight
+        df["power"] = df["power"] * weight
+
     df = df.sort_values("timestamp").reset_index(drop=True)
 
-    # --- Test type detection and confirmation ---
-    # --- File & weight inputs already handled above ---
-
-    # --- Step 3: Select test type manually ---
-    st.subheader("Select Test Type")
-
-    test_choice = st.radio(
-        "Choose which test you performed:",
-        [
-            "3/12-minute Critical Power Test (linear model)",
-            "5K Time Trial (exponential model)"
-        ],
-        horizontal=False
-    )
-
-    if "3/12" in test_choice:
-        mode = "1"
-    else:
-        mode = "2"
-
-    st.markdown("---")
-    st.write("Press the button below to analyze your uploaded file.")
-
-    if weight is None or weight == 0:
-        st.warning("⚠️ Please enter your body weight before running the analysis.")
-    st.stop()
-
-    if run_analysis:
-        st.markdown("### Analysis Results")
-
-        # ---- 3/12-minute Test ---- #
-        if mode == "1":
-            best3, s3, e3 = best_avg_power(df, 180)
-            best12, s12, e12 = best_avg_power(df, 720)
-            ext3 = extend_best_segment(df, s3, e3, best3)
-            ext12 = extend_best_segment(df, s12, e12, best12)
-            cp, w_prime = compute_cp_linear(ext3[0], 180, ext12[0], 720)
-
-            st.subheader("Results – 3/12 Minute Test")
-            st.write(f"**3 min avg power:** {ext3[0]:.1f} W")
-            st.write(f"**12 min avg power:** {ext12[0]:.1f} W")
-            st.write(f"**Critical Power:** {cp:.1f} W")
-            st.write(f"**W′:** {w_prime/1000:.2f} kJ")
-
-            fig, ax = plt.subplots()
+    # --- Analysis Results ---
+    st.markdown("### Analysis Results")
 
     if mode == "1":
+        # ---- 3/12-minute Test ---- #
         best3, s3, e3 = best_avg_power(df, 180)
         best12, s12, e12 = best_avg_power(df, 720)
         ext3 = extend_best_segment(df, s3, e3, best3)
@@ -109,14 +111,13 @@ if file:
         st.pyplot(fig)
 
     else:
+        # ---- 5K Time Trial ---- #
         best5k, s5k, e5k = best_power_for_distance(df, 5000)
         ext5k = extend_best_segment(df, s5k, e5k, best5k)
         t5k = int(ext5k[3])
         avg_pow = ext5k[0]
         cp_est = compute_cp_exponential(avg_pow, t5k)
         diff = avg_pow - cp_est
-
-        # Calculate formatted duration and pace
         total_time_str = str(timedelta(seconds=int(t5k)))
         pace_per_km = timedelta(seconds=int(t5k / 5))
 
@@ -124,4 +125,3 @@ if file:
         st.write(f"**Total time:** {total_time_str}  ({pace_per_km} per km)")
         st.write(f"**5K avg power:** {avg_pow:.1f} W")
         st.write(f"**Critical Power:** {cp_est:.1f} W  (−{diff:.1f} W, {diff/avg_pow*100:.1f} %)")
-
