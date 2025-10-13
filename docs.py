@@ -19,7 +19,7 @@ You perform two all-out efforts:
 
 The tool finds the **highest average power** over those durations and uses the **linear CP model**:
 
-    st.latex(r"P = CP + \frac{W′}{t}")
+        st.latex(r"P = CP + \frac{W′}{t}")
 
 where:
 - *P* = mean power (W)  
