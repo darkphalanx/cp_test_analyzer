@@ -167,10 +167,39 @@ if run_analysis:
         }
         st.dataframe(pd.DataFrame(seg_data))
 
-        # --- Critical Power estimate ---
+        # --- Critical Power estimate across fatigue profiles ---
+        k_profiles = {
+            "Highly aerobic / ultra runner": 0.014,
+            "Balanced distance runner": 0.018,
+            "Anaerobic / sprinter": 0.020,
+        }
+
+        cp_results = {
+            label: compute_cp_exponential(avg_pow, t5k, k=k)
+            for label, k in k_profiles.items()
+        }
+
+        cp_min = min(cp_results.values())
+        cp_max = max(cp_results.values())
+        cp_mid = cp_results["Balanced distance runner"]
+
+        # --- Display CP table ---
         st.subheader("Critical Power Results")
-        st.write(f"**Estimated Critical Power (CP):** {cp_est:.1f} W")
-        st.write(f"**Difference from avg power:** {diff:.1f} W ({diff/avg_pow*100:.1f} %)")
+        cp_table = pd.DataFrame(
+            {
+                "Runner Type": list(cp_results.keys()),
+                "k": [f"{k:.3f}" for k in k_profiles.values()],
+                "Estimated CP (W)": [f"{cp:.1f}" for cp in cp_results.values()],
+            }
+        )
+        st.dataframe(cp_table, hide_index=True)
+
+        st.markdown(
+            f"**Estimated CP range:** {cp_min:.1f} – {cp_max:.1f} W  "
+            f"(midpoint {cp_mid:.1f} W for a balanced profile)"
+        )
+        st.caption("Range reflects different fatigue rates (k-values) per runner type.")
+
 
 # ==============================================================
 # 📘 Help & Documentation
