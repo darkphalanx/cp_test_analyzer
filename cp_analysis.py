@@ -143,19 +143,14 @@ def compute_cp_exponential(p, t, k=0.018, p_max=None):
 
 def compute_cp_5k_range(p):
     """
-    Estimate Critical Power (CP) range from a 5K time trial average power,
-    using empirical fatigue profiles inspired by Steve Palladino's Power Project.
-    Returns a dict with CP per runner type.
+    Estimate Critical Power (CP) range from a 5 K time trial average power.
     """
-    # Approximate scaling factors relative to 5K power
     profiles = {
-        "Highly aerobic / ultra runner (slow fatigue)": 0.985,
-        "Balanced distance runner (typical)": 0.975,
-        "Anaerobic / sprinter (fast fatigue)": 0.965,
+        "Aerobic": 0.985,     # slow fatigue
+        "Balanced": 0.975,    # moderate fatigue
+        "Anaerobic": 0.965,   # fast fatigue
     }
-
-    cp_results = {label: p * factor for label, factor in profiles.items()}
-    return cp_results
+    return {label: p * factor for label, factor in profiles.items()}
 
 
 def detect_test_type(df):

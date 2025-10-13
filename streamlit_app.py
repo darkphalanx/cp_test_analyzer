@@ -170,34 +170,51 @@ if run_analysis:
         # --- Critical Power estimate across fatigue profiles (empirical model) ---
         cp_results = compute_cp_5k_range(avg_pow)
 
-        st.subheader("Critical Power Results")
+        st.subheader("Critical Power Profiles")
         st.markdown("""
-Choose the profile that best matches your physiology and racing style.
-For most trained runners, *Balanced distance runner (typical)* is the right choice.
-""")
+        Each profile represents a different **fatigue characteristic**.  
+        Choose the one that best matches your physiology:
+        """)
 
+        # Compact, clean table
         cp_table = pd.DataFrame(
             {
-                "Runner Type": list(cp_results.keys()),
-                "Estimated CP (W)": [f"{cp:.1f}" for cp in cp_results.values()],
-                "Description": [
-                    "Exceptional endurance, low fatigue over long durations.",
-                    "Well-trained distance runner with balanced fatigue resistance.",
-                    "High anaerobic capacity, strong over short efforts but fades sooner."
+                "Profile": ["Aerobic", "Balanced", "Anaerobic"],
+                "CP (W)": [f"{cp:.1f}" for cp in cp_results.values()],
+                "Scaling": ["98.5%", "97.5%", "96.5%"],
+                "Trait": [
+                    "Endurance-focused",
+                    "Typical distance runner",
+                    "Power-focused",
                 ],
             }
         )
+
         st.dataframe(cp_table, use_container_width=True, hide_index=True)
 
+        # Range summary
         cp_min = min(cp_results.values())
         cp_max = max(cp_results.values())
-        cp_mid = cp_results["Balanced distance runner (typical)"]
+        cp_mid = list(cp_results.values())[1]  # Balanced profile
 
         st.markdown(
             f"**Estimated CP range:** {cp_min:.1f} – {cp_max:.1f} W "
             f"(typical profile ≈ {cp_mid:.1f} W)"
         )
-        st.caption("Range reflects different fatigue rates among runner types.")
+
+        st.caption(
+            "Profiles are based on empirical fatigue scaling factors "
+            "(~0.965 – 0.985 of 5 K power)."
+        )
+
+        # Optional quick guide
+        st.caption(
+            "**Aerobic:** conservative (slow fatigue) | "
+            "**Balanced:** typical endurance runner | "
+            "**Anaerobic:** aggressive (fast fatigue)"
+        )
+
+
 
 st.markdown("---")
 render_documentation()
