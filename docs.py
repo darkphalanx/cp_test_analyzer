@@ -68,7 +68,6 @@ The app reports a **CP range** spanning the three fatigue profiles.
 The “balanced distance runner” value (~97.5 %) is displayed as the **typical CP estimate**,  
 while the upper and lower bounds illustrate realistic variation based on your personal endurance profile.
 
-
 ---
 
 ### 📊 2️⃣ Segment Selection
