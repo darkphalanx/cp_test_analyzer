@@ -69,7 +69,7 @@ if file:
             st.write(f"**Critical Power:** {cp:.1f} W")
             st.write(f"**W′:** {w_prime/1000:.2f} kJ")
 
-            fig, ax = plt.subpl
+            fig, ax = plt.subplots()
 
     if mode == "1":
         best3, s3, e3 = best_avg_power(df, 180)
