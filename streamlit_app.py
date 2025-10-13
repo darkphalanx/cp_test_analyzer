@@ -95,18 +95,41 @@ if run_analysis:
 
     # --- 5K Time Trial ---
     else:
+        # ---- 5K Time Trial ---- #
         best5k, s5k, e5k = best_power_for_distance(df, 5000)
         ext5k = extend_best_segment(df, s5k, e5k, best5k)
         t5k = int(ext5k[3])
         avg_pow = ext5k[0]
         cp_est = compute_cp_exponential(avg_pow, t5k)
         diff = avg_pow - cp_est
-        total_time_str = str(timedelta(seconds=int(t5k)))
+
+        # --- Calculate total time & pace ---
+        total_time_str = str(timedelta(seconds=t5k))
         pace_per_km = timedelta(seconds=int(t5k / 5))
 
+        # --- Determine actual distance from data ---
+        dist_col = None
+        for c in df.columns:
+            if "watch distance" in c.lower() or "stryd distance" in c.lower():
+                dist_col = c
+                break
+
+        if dist_col:
+            df["dist"] = pd.to_numeric(df[dist_col], errors="coerce").ffill()
+            actual_distance = df.loc[ext5k[2], "dist"] - df.loc[ext5k[1], "dist"]
+        else:
+            actual_distance = 5000  # fallback if no distance column found
+
+        actual_distance_km = actual_distance / 1000
+
+        # --- Display results ---
         st.subheader("Results – 5K Time Trial")
+        st.write(f"**Actual distance:** {actual_distance_km:.2f} km")
         st.write(f"**Total time:** {total_time_str}  ({pace_per_km} per km)")
-        st.write(f"**5K avg power:** {avg_pow:.1f} W")
-        st.write(f"**Critical Power:** {cp_est:.1f} W  (−{diff:.1f} W, {diff/avg_pow*100:.1f} %)")
+        st.write(f"**Average power:** {avg_pow:.1f} W")
+        st.write(
+            f"**Critical Power:** {cp_est:.1f} W  (−{diff:.1f} W, {diff/avg_pow*100:.1f} %)"
+        )
+
 
     st.info("💡 Tip: Use consistent test conditions (course, weather, shoes) for reliable comparisons.")
