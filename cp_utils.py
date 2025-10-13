@@ -67,49 +67,51 @@ def compute_cp_linear(p1, t1, p2, t2):
 
 def best_power_for_distance(df, distance_m):
     """
-    Find the best average power over a given distance (meters).
-    Always uses the 'Watch Distance (meters)' column.
-    Assumes decimal point format (e.g., 2.57, 4.93, ...).
+    Find the best average power over the specified distance (meters),
+    using the 'Watch Distance (meters)' column. This is preferred when
+    the Stryd footpod is correctly configured as the distance source.
     """
     import numpy as np
     import pandas as pd
 
-    # --- Validate column ---
+    # --- Validate ---
     if "Watch Distance (meters)" not in df.columns:
-        raise ValueError(
-            "Missing 'Watch Distance (meters)' column. "
-            "Make sure your CSV export includes it."
-        )
+        raise ValueError("Column 'Watch Distance (meters)' not found in CSV.")
 
-    dist_col = "Watch Distance (meters)"
+    # --- Prepare distance data ---
+    df["dist"] = pd.to_numeric(df["Watch Distance (meters)"], errors="coerce").ffill().astype(float)
 
-    # --- Minimal, safe conversion ---
-    df["dist"] = pd.to_numeric(df[dist_col], errors="coerce").ffill().bfill().astype(float)
-    df = df.reset_index(drop=True)
-
-    # --- Validation ---
+    # --- Sanity check ---
     dist_max = df["dist"].max()
-    if dist_max < distance_m:
-        raise ValueError(
-            f"Distance values look too small (max {dist_max:.1f} m). "
-            "Check if your CSV is truncated."
-        )
+    print(f"Loaded Watch Distance range: 0 → {dist_max:.1f} m")
+    if dist_max < distance_m * 0.9:
+        print("Warning: activity shorter than target distance.")
 
-    # --- Find best rolling segment ---
+    # --- Efficient sliding window search ---
     best_power = 0
-    start_idx = end_idx = 0
-    for i in range(len(df)):
-        target = df.loc[i, "dist"] + distance_m
-        j = df["dist"].searchsorted(target, side="right") - 1
-        if j <= i:
-            continue
-        avg_pow = df.loc[i:j, "power"].mean()
+    best_start = 0
+    best_end = 0
+    n = len(df)
+
+    dist_array = df["dist"].to_numpy()
+    power_array = df["power"].to_numpy()
+
+    j = 0
+    for i in range(n):
+        target = dist_array[i] + distance_m
+        while j < n and dist_array[j] < target - 1.0:
+            j += 1
+        if j >= n:
+            break
+        avg_pow = power_array[i:j].mean()
         if avg_pow > best_power:
             best_power = avg_pow
-            start_idx, end_idx = i, j
+            best_start, best_end = i, j
 
-    return best_power, start_idx, end_idx
+    if best_power == 0:
+        raise RuntimeError("Could not find valid distance window. Check distance scaling.")
 
+    return best_power, best_start, best_end
 
 # ---------- 5K Scaling Model ---------- #
 
