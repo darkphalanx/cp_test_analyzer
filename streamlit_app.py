@@ -8,6 +8,7 @@ from datetime import timedelta
 import matplotlib.pyplot as plt
 import numpy as np
 
+st.set_page_config(page_title="Critical Power Analysis Tool", layout="wide")
 # --- App Title ---
 st.title("⚡ Critical Power Analysis Tool")
 st.caption("Analyze your running power data to estimate Critical Power (CP) and W′.")
@@ -111,7 +112,7 @@ if run_analysis:
             "Pace (/km)": [str(pace3) if pace3 else "–", str(pace12) if pace12 else "–"],
             "Avg Power (W)": [f"{ext3[0]:.1f}", f"{ext12[0]:.1f}"],
         }
-        st.dataframe(pd.DataFrame(seg_data))
+        st.dataframe(pd.DataFrame(seg_data), use_container_width=True)
 
         # --- Display computed CP/W' ---
         st.subheader("Critical Power Results")
@@ -163,7 +164,7 @@ if run_analysis:
             "Pace (/km)": [str(pace_per_km)],
             "Avg Power (W)": [f"{avg_pow:.1f}"],
         }
-        st.dataframe(pd.DataFrame(seg_data))
+        st.dataframe(pd.DataFrame(seg_data), use_container_width=True)
 
         # --- Critical Power estimate across fatigue profiles (empirical model) ---
         cp_results = compute_cp_5k_range(avg_pow)
@@ -185,7 +186,7 @@ For most trained runners, *Balanced distance runner (typical)* is the right choi
                 ],
             }
         )
-        st.dataframe(cp_table, hide_index=True)
+        st.dataframe(cp_table, use_container_width=True, hide_index=True)
 
         cp_min = min(cp_results.values())
         cp_max = max(cp_results.values())
