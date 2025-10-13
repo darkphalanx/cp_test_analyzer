@@ -185,28 +185,9 @@ if run_analysis:
         cp_max = max(cp_results.values())
         cp_mid = list(cp_results.values())[1]  # Balanced profile
 
-        # Display final CP range in styled block
-        st.markdown("---")
         st.markdown(
-            f"""
-            <div style="
-                text-align:center;
-                padding: 1.5rem;
-                background-color: #f8f9fa;
-                border-radius: 10px;
-                border: 2px solid #e0e0e0;
-                box-shadow: 0 0 10px rgba(0,0,0,0.05);
-            ">
-                <h2 style="color:#0b5394;">🏁 Estimated Critical Power Range</h2>
-                <p style="font-size:1.3rem; font-weight:600; margin:0;">
-                    {min(cp_results.values()):.1f} – {max(cp_results.values()):.1f} W
-                </p>
-                <p style="font-size:1.1rem; color:#444; margin:0.3rem 0 0 0;">
-                    Typical profile ≈ <b>{cp_results['Balanced distance runner']:.1f} W</b>
-                </p>
-            </div>
-            """,
-            unsafe_allow_html=True,
+            f"**Estimated CP range:** {cp_min:.1f} – {cp_max:.1f} W "
+            f"(typical profile ≈ {cp_mid:.1f} W)"
         )
 
         st.caption(
