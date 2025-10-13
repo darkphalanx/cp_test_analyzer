@@ -127,15 +127,20 @@ def best_power_for_distance(df, distance_m):
     return best_power, best_start, best_end
 
 
-def compute_cp_exponential(p, t, k=0.0135):
+def compute_cp_exponential(p, t, k=0.018, p_max=None):
     """
-    Estimate CP from a single race using an exponential fatigue model
-    tuned to match Palladino's SuperPowerCalculator for races ≤ 40 min.
-    Typically yields CP ≈ 2–3 % below 5 k power.
+    Estimate Critical Power (CP) from a single test using the exponential model:
+        P = CP + (Pmax - CP)e^{-k t}
+    If Pmax not provided, assume Pmax ≈ P * 1.18 (typical for 3-min max vs 20-min effort).
     """
-    fatigue_factor = 1 - 0.03 * np.exp(-0.010 * t / 60)
-    cp = p * fatigue_factor
+    if p_max is None:
+        # Assume a realistic short-duration peak about 18% above current effort
+        p_max = p * 1.18
+
+    exp_term = np.exp(-k * t)
+    cp = (p - p_max * exp_term) / (1 - exp_term)
     return cp
+
 
 
 def detect_test_type(df):
