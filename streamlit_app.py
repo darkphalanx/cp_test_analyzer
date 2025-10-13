@@ -195,13 +195,6 @@ if run_analysis:
             "(~0.965 – 0.985 of 5 K power)."
         )
 
-        # Optional quick guide
-        st.caption(
-            "**Aerobic:** conservative (slow fatigue) | "
-            "**Balanced:** typical endurance runner | "
-            "**Anaerobic:** aggressive (fast fatigue)"
-        )
-
 
 
 st.markdown("---")
