@@ -93,7 +93,6 @@ if run_analysis:
         ax.set_ylim(min(powers) - 10, max(powers) + 10)
         st.pyplot(fig)
 
-    # --- 5K Time Trial ---
     else:
         # ---- 5K Time Trial ---- #
         best5k, s5k, e5k = best_power_for_distance(df, 5000)
@@ -120,11 +119,12 @@ if run_analysis:
         else:
             actual_distance = 5000  # fallback if no distance column found
 
+        # --- Format distance ---
         actual_distance_km = actual_distance / 1000
 
         # --- Display results ---
         st.subheader("Results – 5K Time Trial")
-        st.write(f"**Actual distance:** {actual_distance_km:.2f} km")
+        st.write(f"**Actual distance:** {actual_distance:.0f} m  ({actual_distance_km:.2f} km)")
         st.write(f"**Total time:** {total_time_str}  ({pace_per_km} per km)")
         st.write(f"**Average power:** {avg_pow:.1f} W")
         st.write(
