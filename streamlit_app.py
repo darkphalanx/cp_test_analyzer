@@ -94,14 +94,6 @@ with st.sidebar:
         else:
             target_power = st.number_input("🎯 Target Power (W)", 100.0, 600.0, step=1.0)
             tolerance = st.slider("± Power Tolerance (%)", 1, 10, 5) / 100
-            # Display calculated range (auto-updates with target & tolerance)
-            if target_power and tolerance:
-                lower = target_power * (1 - tolerance)
-                upper = target_power * (1 + tolerance)
-                st.markdown(
-                    f"<span style='font-size: 0.8em; color: gray;'>Range: {lower:.1f} W – {upper:.1f} W</span>",
-                    unsafe_allow_html=True
-                )
             min_duration = st.number_input("⏱️ Minimum Duration (minutes)", 3, 60, 10) * 60
 
     st.markdown("---")
