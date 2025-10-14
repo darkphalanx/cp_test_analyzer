@@ -72,6 +72,16 @@ with st.sidebar:
     uploaded_file = st.file_uploader(
         "Select your activity file (CSV export from Garmin/Stryd)", type=["csv"]
     )
+    
+     # --- Stryd weight Section ---
+     stryd_weight = st.number_input(
+        "⚖️ Stryd Weight (kg)",
+        min_value=40.0,
+        max_value=120.0,
+        value=76.0,
+        step=0.1,
+        help="Your body weight used by Stryd to calculate running power."
+    )   
 
     # --- Choose Analysis Type ---
     test_choice = st.radio(
@@ -109,15 +119,15 @@ with st.sidebar:
 # --- Main Screen ---
 if run_analysis:
     # --- Validation ---
-    if file is None:
+    if uploaded_file is None:
         st.warning("Please upload a CSV file before running the analysis.")
         st.stop()
-    if stryd_weight is None or stryd_weight == 0:
+    if stryd_weight is None or stryd_weight <= 0:
         st.warning("Please enter your Stryd weight before running the analysis.")
         st.stop()
 
     # --- Load and prepare data ---
-    df = load_csv_auto(file)
+    df = load_csv_auto(uploaded_file)
 
     time_col = [c for c in df.columns if "time" in c.lower()][0]
     df["timestamp"] = pd.to_datetime(df[time_col], unit="s", errors="coerce")
