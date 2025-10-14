@@ -171,6 +171,8 @@ def detect_segments(df, target_power, tolerance=0.05, min_duration_sec=300, samp
                 duration = (end - start + 1) / sampling_rate
                 if duration >= min_duration_sec:
                     avg_power = power[start:end + 1].mean()
+                    min_power = power[start:end + 1].min()
+                    max_power = power[start:end + 1].max()
                     distance_m = dist[end] - dist[start]
                     pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
                     elapsed_start = str(pd.to_timedelta((times.iloc[start] - t0).total_seconds(), unit="s")).split()[-1]
@@ -182,6 +184,8 @@ def detect_segments(df, target_power, tolerance=0.05, min_duration_sec=300, samp
                         "elapsed_end": elapsed_end,
                         "duration_s": duration,
                         "avg_power": avg_power,
+                        "min_power": min_power,
+                        "max_power": max_power,
                         "distance_m": distance_m,
                         "pace_per_km": pace_per_km
                     })
@@ -194,6 +198,8 @@ def detect_segments(df, target_power, tolerance=0.05, min_duration_sec=300, samp
         duration = (end - start + 1) / sampling_rate
         if duration >= min_duration_sec:
             avg_power = power[start:end + 1].mean()
+            min_power = power[start:end + 1].min()
+            max_power = power[start:end + 1].max()            
             distance_m = dist[end] - dist[start]
             pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
             elapsed_start = str(pd.to_timedelta((times.iloc[start] - t0).total_seconds(), unit="s")).split()[-1]
@@ -205,6 +211,8 @@ def detect_segments(df, target_power, tolerance=0.05, min_duration_sec=300, samp
                 "elapsed_end": elapsed_end,
                 "duration_s": duration,
                 "avg_power": avg_power,
+                "min_power": min_power,
+                "max_power": max_power,                
                 "distance_m": distance_m,
                 "pace_per_km": pace_per_km
             })
@@ -270,6 +278,8 @@ def detect_stable_power_segments(
             duration = (j - i) / sampling_rate
             if duration >= min_duration_sec:
                 avg_power = power[i:j].mean()
+                min_power = power[i:j].min()
+                max_power = power[i:j].max()
                 distance_m = dist[j - 1] - dist[i]
                 pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
                 elapsed_start = str(datetime.timedelta(seconds=int((times.iloc[i] - t0).total_seconds())))
@@ -281,6 +291,8 @@ def detect_stable_power_segments(
                     "elapsed_end": elapsed_end,
                     "duration_s": duration,
                     "avg_power": avg_power,
+                    "min_power": min_power,
+                    "max_power": max_power,
                     "distance_m": distance_m,
                     "pace_per_km": pace_per_km
                 })

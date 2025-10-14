@@ -277,7 +277,9 @@ if run_analysis:
                 "Start": seg["elapsed_start"],
                 "End": seg["elapsed_end"],
                 "Duration": str(timedelta(seconds=int(seg["duration_s"]))),
+                "Min Power (W)": f"{seg['min_power']:.1f}",
                 "Avg Power (W)": f"{seg['avg_power']:.1f}",
+                "Max Power (W)": f"{seg['max_power']:.1f}",
                 "Distance (m)": f"{seg['distance_m']:.0f}",
                 "Pace (/km)": str(timedelta(seconds=int(seg["pace_per_km"]))) if seg["pace_per_km"] else "–",
                 "Running Effectiveness": f"{seg['RE']:.3f}" if seg["RE"] else "–"
