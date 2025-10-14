@@ -42,16 +42,15 @@ The average power from that segment, noted \( P_{5K} \), is converted into an es
 
 ##### **Empirical Formula**
 
-\[
-CP = P_{5K} \times f
-\]
-
-where:  
+""" )
+        st.latex(r"CP = P_{5K} \times f")
+        st.markdown(r"""
+where:
 - \( P_{5K} \) = average power over the best 5 000 m segment  
 - \( f \) = empirical fatigue factor (depends on runner profile)
+""")
 
----
-
+st.markdown(r"""
 ##### **Runner-Type Profiles**
 
 | Runner Type | Fatigue Factor \( f \) | CP as % of 5 K Power | Description |
@@ -73,22 +72,16 @@ while the upper and lower bounds show realistic variation based on your personal
 ##### **Example Calculation**
 
 For a 5 K effort with \( P_{5K} = 338.8 \text{ W} \):
-
-\[
-CP_{\text{Aerobic}} = 338.8 \times 0.985 = 333.7 \text{ W}
-\]
-
-\[
-CP_{\text{Balanced}} = 338.8 \times 0.975 = 330.3 \text{ W}
-\]
-
-\[
-CP_{\text{Anaerobic}} = 338.8 \times 0.965 = 326.9 \text{ W}
-\]
-
+""")
+        st.latex(r"CP_{\text{Aerobic}} = 338.8 \times 0.985 = 333.7\ \text{W}")
+        st.latex(r"CP_{\text{Balanced}} = 338.8 \times 0.975 = 330.3\ \text{W}")
+        st.latex(r"CP_{\text{Anaerobic}} = 338.8 \times 0.965 = 326.9\ \text{W}")
+        st.markdown(r"""
 Thus, the app reports an **estimated CP range of 326.9 – 333.7 W**,  
-with a *typical profile* estimate of ≈ **330.3 W**. 
+with a *typical profile* estimate of ≈ **330.3 W**.
+""")
 
+st.markdown(r"""
 ---
 
 ### 📊 2️⃣ Segment Selection
