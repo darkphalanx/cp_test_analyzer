@@ -204,8 +204,8 @@ def detect_segments(df, target_power, tolerance=0.05, min_duration_sec=300, samp
             segments.append({
                 "start_idx": start,
                 "end_idx": end,
-                "elapsed_start": str(pd.to_timedelta(elapsed_start, unit="s")),
-                "elapsed_end": str(pd.to_timedelta(elapsed_end, unit="s")),
+                "elapsed_start": str(pd.to_timedelta(elapsed_start, unit="s")).split()[-1],
+                "elapsed_end": str(pd.to_timedelta(elapsed_end, unit="s")).split()[-1],
                 "duration_s": duration,
                 "avg_power": avg_power,
                 "distance_m": distance_m,
@@ -267,8 +267,8 @@ def detect_stable_power_segments(df, max_std_ratio=0.05, min_duration_sec=300, s
             segments.append({
                 "start_idx": i,
                 "end_idx": j,
-                "elapsed_start": str(pd.to_timedelta(elapsed_start, unit="s")),
-                "elapsed_end": str(pd.to_timedelta(elapsed_end, unit="s")),
+                "elapsed_start": str(pd.to_timedelta(elapsed_start, unit="s")).split()[-1],
+                "elapsed_end": str(pd.to_timedelta(elapsed_end, unit="s")).split()[-1],
                 "duration_s": duration,
                 "avg_power": avg_power,
                 "distance_m": distance_m,
