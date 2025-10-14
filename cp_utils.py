@@ -170,8 +170,8 @@ def detect_segments(df, target_power, tolerance=0.05, min_duration_sec=300, samp
                 end = i - gap_count
                 duration = (end - start + 1) / sampling_rate
                 if duration >= min_duration_sec:
-                    avg_power = power[start:end + 1].mean()
-                    avg_min_power, avg_max_power = average_min_max(power[start:end + 1], chunk_size=10, sampling_rate=sampling_rate)
+                    avg_power = power[i:j].mean()
+                    avg_min_power, avg_max_power = average_min_max(power[i:j], chunk_size=10, sampling_rate=sampling_rate)
                     distance_m = dist[end] - dist[start]
                     pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
                     elapsed_start = str(pd.to_timedelta((times.iloc[start] - t0).total_seconds(), unit="s")).split()[-1]
@@ -196,8 +196,8 @@ def detect_segments(df, target_power, tolerance=0.05, min_duration_sec=300, samp
         end = len(in_zone) - 1
         duration = (end - start + 1) / sampling_rate
         if duration >= min_duration_sec:
-            avg_power = power[start:end + 1].mean()
-            avg_min_power, avg_max_power = average_min_max(power[start:end + 1], chunk_size=10, sampling_rate=sampling_rate)       
+            avg_power = power[i:j].mean()
+            avg_min_power, avg_max_power = average_min_max(power[i:j], chunk_size=10, sampling_rate=sampling_rate)
             distance_m = dist[end] - dist[start]
             pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
             elapsed_start = str(pd.to_timedelta((times.iloc[start] - t0).total_seconds(), unit="s")).split()[-1]
