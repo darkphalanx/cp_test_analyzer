@@ -1,14 +1,18 @@
 import streamlit as st
 import pandas as pd
-from cp_utils import (
-    load_csv_auto, best_avg_power, best_power_for_distance,
-    extend_best_segment, compute_cp_linear, compute_cp_5k_range,
-    detect_segments, running_effectiveness, detect_stable_power_segments, detect_target_segments_rolling, detect_stable_segments_rolling
-)
-
-from datetime import timedelta
-from docs import render_documentation
 import numpy as np
+from datetime import timedelta
+from cp_utils import (
+    load_csv_auto,
+    best_avg_power,
+    best_power_for_distance,
+    extend_best_segment,
+    compute_cp_linear,
+    compute_cp_5k_range,
+    running_effectiveness,
+    detect_stable_segments_rolling,  # only current detection function
+)
+from docs import render_docs
 
 # --- Helper: Styled Result Card ---
 def show_result_card(title: str, main_value: str, subtext: str = "", color: str = "#0b5394"):
@@ -53,56 +57,51 @@ def show_result_card(title: str, main_value: str, subtext: str = "", color: str 
     )
 
 
-st.set_page_config(page_title="Critical Power Analysis Tool", layout="wide")
-# --- App Title ---
-st.title("⚡ Critical Power Analysis Tool")
-st.caption("Analyze your running power data to estimate Critical Power (CP) and W′.")
+st.set_page_config(
+    page_title="Critical Power Analyzer",
+    page_icon="⚡",
+    layout="wide",
+)
 
 # --- Sidebar Inputs ---
 with st.sidebar:
-    st.header("Settings")
-    file = st.file_uploader("📂 Upload Stryd CSV file", type=["csv"])
+    st.header("⚙️ Analysis Settings")
 
-    stryd_weight = st.number_input(
-        "Stryd weight (kg)",
-        min_value=30.0,
-        max_value=150.0,
-        step=0.1,
-        value=None,
-        placeholder="Enter the weight configured in your Stryd app"
+    # --- File Upload Section ---
+    st.subheader("📁 Upload CSV")
+    uploaded_file = st.file_uploader(
+        "Select your activity file (CSV export from Garmin/Stryd)", type=["csv"]
     )
 
+    # --- Choose Analysis Type ---
     test_choice = st.radio(
-        "Select test type:",
-        [
-            "3/12-minute CP Test",
-            "5K Time Trial",
-            "Segment Analysis (Running Effectiveness)"
-        ],
-        horizontal=False
+        "Choose Analysis Type",
+        ["Critical Power Test", "5K Test", "Segment Analysis"],
+        index=2,
     )
 
-    if "Segment Analysis" in test_choice:
-        st.markdown("---")
-        auto_mode = st.toggle("🔍 Auto-detect stable segments", value=True)
-        st.subheader("Segment Detection Settings")
-        smooth_window = st.slider("Smoothing window (sec)", 1, 10, 5)
-        
-        if auto_mode:
+    # --- Critical Power Section ---
+    with st.expander("⚡ Critical Power Settings", expanded=(test_choice == "Critical Power Test")):
+        if test_choice == "Critical Power Test":
+            cp_window_min = st.slider("Minimum Window (min)", 1, 20, 3)
+            cp_window_max = st.slider("Maximum Window (min)", 5, 60, 12)
+            cp_smoothing = st.slider("Smoothing (sec)", 0, 15, 5)
+            show_extended = st.checkbox("Show Extended Stats", value=True)
+
+    # --- 5K Section ---
+    with st.expander("🏃 5K Test Settings", expanded=(test_choice == "5K Test")):
+        if test_choice == "5K Test":
+            time_window = st.slider("Rolling Window (sec)", 1, 30, 5)
+            show_details = st.checkbox("Show Split Details", value=True)
+
+    # --- Segment Analysis Section ---
+    with st.expander("📊 Segment Detection", expanded=(test_choice == "Segment Analysis")):
+        if test_choice == "Segment Analysis":
+            smooth_window = st.slider("Smoothing Window (sec)", 1, 15, 5)
             max_std = st.slider("Max Power Variability (%)", 1, 10, 5) / 100
+            max_gap = st.slider("Allowed Gap (sec)", 0, 30, 10)
             min_duration = st.number_input("⏱️ Minimum Duration (minutes)", 3, 60, 10) * 60
-        else:
-            target_power = st.number_input("🎯 Target Power (W)", 100.0, 600.0, step=1.0)
-            tolerance = st.slider("± Power Tolerance (%)", 1, 10, 5) / 100
-            # Display calculated range (auto-updates with target & tolerance)
-            if target_power and tolerance:
-                lower = target_power * (1 - tolerance)
-                upper = target_power * (1 + tolerance)
-                st.markdown(
-                    f"<span style='font-size: 0.8em; color: gray;'>Range: {lower:.1f} W – {upper:.1f} W</span>",
-                    unsafe_allow_html=True
-                )
-            min_duration = st.number_input("⏱️ Minimum Duration (minutes)", 3, 60, 10) * 60
+
 
     st.markdown("---")
     run_analysis = st.button("🚀 Run Analysis")
@@ -267,7 +266,7 @@ if run_analysis:
     # ==============================================================
     elif "Segment Analysis" in test_choice:
         st.markdown("---")
-        st.subheader("Segment Detection Settingss")
+        st.subheader("Segment Detection Settings")
 
         # Unified auto-detect (rolling) parameters
         smooth_window = st.slider("Smoothing Window (sec)", 1, 15, 5)
