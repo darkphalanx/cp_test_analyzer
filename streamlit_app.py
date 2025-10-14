@@ -266,21 +266,21 @@ if run_analysis:
     # Segment Analysis (Running Effectiveness)
     # ==============================================================
     elif "Segment Analysis" in test_choice:
-        if 'auto_mode' in locals() and auto_mode:
-            smooth_window = smooth_window if "smooth_window" in locals() else 5
-            segments = detect_stable_segments_rolling(
-                df,
-                max_std_ratio=max_std,
-                smooth_window_sec=smooth_window,
-                min_duration_sec=min_duration,
-            )
-        else:
-            smooth_window = smooth_window if "smooth_window" in locals() else 5
-            segments = detect_target_segments_rolling(
+        st.markdown("---")
+        st.subheader("Segment Detection Settings")
+
+        # Unified auto-detect (rolling) parameters
+        smooth_window = st.slider("Smoothing Window (sec)", 1, 15, 5)
+        max_std = st.slider("Max Power Variability (%)", 1, 10, 5) / 100
+        max_gap = st.slider("Allowed Gap (sec)", 0, 30, 10)
+        min_duration = st.number_input("⏱️ Minimum Duration (minutes)", 3, 60, 10) * 60
+
+        # Run detection
+        segments = detect_stable_segments_rolling(
             df,
-            target_power=target_power,
-            tolerance=tolerance,
+            max_std_ratio=max_std,
             smooth_window_sec=smooth_window,
+            max_gap_sec=max_gap,
             min_duration_sec=min_duration,
         )
 
@@ -288,11 +288,13 @@ if run_analysis:
             st.warning("No stable power segments found within the specified range and duration.")
             st.stop()
 
+        # Compute Running Effectiveness for each segment
         for seg in segments:
             seg["RE"] = running_effectiveness(
                 seg["distance_m"], seg["duration_s"], seg["avg_power"], stryd_weight
             )
 
+        # Build DataFrame for display
         seg_df = pd.DataFrame([
             {
                 "Start": str(timedelta(seconds=int(seg["start_elapsed"]))),
@@ -301,23 +303,34 @@ if run_analysis:
                 "Min Power (W)": f"{seg['min_power']:.1f}",
                 "Avg Power (W)": f"{seg['avg_power']:.1f}",
                 "Max Power (W)": f"{seg['max_power']:.1f}",
+                "CV %": f"{seg['cv_%']:.2f}",
                 "Distance (m)": f"{seg['distance_m']:.0f}",
-                "Pace (/km)": str(timedelta(seconds=int(seg["pace_per_km"]))) if seg["pace_per_km"] else "–",
-                "Running Effectiveness": f"{seg['RE']:.3f}" if seg["RE"] else "–"
+                "Pace (/km)": (
+                    str(timedelta(seconds=int(seg["pace_per_km"])))
+                    if seg["pace_per_km"]
+                    else "–"
+                ),
+                "Running Effectiveness": f"{seg['RE']:.3f}" if seg["RE"] else "–",
             }
             for seg in segments
         ])
 
+        # Summary
+        total_time = sum(seg["duration_s"] for seg in segments)
+        total_time_fmt = str(timedelta(seconds=int(total_time)))
+        avg_re = np.nanmean([seg["RE"] for seg in segments if seg["RE"]])
+
         st.subheader("Detected Segments")
+        st.caption(f"Total stable time detected: **{total_time_fmt}** across {len(segments)} segments.")
         st.dataframe(seg_df, width="stretch")
 
-        avg_re = np.nanmean([seg["RE"] for seg in segments if seg["RE"]])
         show_result_card(
             "Average Running Effectiveness",
             f"{avg_re:.3f}",
             "Typical values: 0.98 – 1.05 for most runners",
             color="#16a34a"
         )
+
 
 st.markdown("---")
 render_documentation()
