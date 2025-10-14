@@ -109,7 +109,7 @@ with st.sidebar:
         if test_choice == "Segment Analysis":
             smooth_window = st.slider("Smoothing Window (sec)", 1, 15, 5)
             max_std = st.slider("Max Power Variability (%)", 1, 10, 5) / 100
-            max_gap = st.slider("Allowed Gap (sec)", 0, 30, 10)
+            max_gap = st.slider("Allowed Gap (sec)", 0, 120, 30)
             min_duration = st.number_input("⏱️ Minimum Duration (minutes)", 3, 60, 10) * 60
 
 
