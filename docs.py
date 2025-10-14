@@ -4,13 +4,13 @@ def render_documentation():
     """Render the documentation expander in Streamlit."""
     with st.expander("ℹ️ About & Documentation", expanded=False):
         st.markdown(r"""
-## ⚡ Critical Power Analysis – How It Works
+## How It Works
 
-This tool estimates your **Critical Power (CP)** — the highest power you can sustain without fatigue rapidly accumulating — based on **running power data** from a `.csv` file exported from Stryd or Garmin.
+This tool estimates your **Critical Power (CP)** — the highest power you can sustain without fatigue rapidly accumulating — based on **running power data** from a `.csv` file exported from Stryd.
 
 ---
 
-### 🧮 1️⃣ Critical Power Models
+### Critical Power Models
 
 #### **A. 3/12-Minute Test (Linear Model)**
 You perform two all-out efforts:
@@ -80,7 +80,7 @@ with a *typical profile* estimate of ≈ **330.3 W**.
 
 ---
 
-### 📊 2️⃣ Segment Selection
+### Segment Selection
 
 - The app automatically finds the **best rolling window** for each test duration (e.g. best 3 min, 12 min, or 5 000 m).  
 - If a slightly longer segment yields the same or higher average power, it **extends** the window automatically.  
@@ -88,7 +88,7 @@ with a *typical profile* estimate of ≈ **330.3 W**.
 
 ---
 
-### 📘 4️⃣ Interpretation
+### Interpretation
 
 | Metric | What it tells you |
 |---------|------------------|
@@ -98,7 +98,7 @@ with a *typical profile* estimate of ≈ **330.3 W**.
 
 ---
 
-### 🧩 6️⃣ Best Practices & Progression Tracking
+### Best Practices & Progression Tracking
 
 **Combining 5 K and 3/12 Tests**
 
