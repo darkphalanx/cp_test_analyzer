@@ -267,7 +267,7 @@ if run_analysis:
     # ==============================================================
     elif "Segment Analysis" in test_choice:
         st.markdown("---")
-        st.subheader("Segment Detection Settings")
+        st.subheader("Segment Detection Settingss")
 
         # Unified auto-detect (rolling) parameters
         smooth_window = st.slider("Smoothing Window (sec)", 1, 15, 5)
