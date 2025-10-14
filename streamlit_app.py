@@ -275,10 +275,8 @@ if run_analysis:
             target_power=target_power,
             tolerance=tolerance,
             smooth_window_sec=smooth_window,
-            max_gap_sec=max_gap,
             min_duration_sec=min_duration,
         )
-
 
         if not segments:
             st.warning("No stable power segments found within the specified range and duration.")

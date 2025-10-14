@@ -395,12 +395,11 @@ def detect_target_segments_rolling(
     target_power,
     tolerance=0.05,
     smooth_window_sec=5,
-    max_gap_sec=10,
     min_duration_sec=300,
     sampling_rate=1,
 ):
     """
-    Detect segments where the rolling-average power over the last X seconds
+    Detect continuous segments where the rolling-average power over the last X seconds
     stays within ± tolerance of the target power.
 
     Args:
@@ -408,7 +407,6 @@ def detect_target_segments_rolling(
         target_power: target power in watts
         tolerance: allowed ± fraction (e.g. 0.05 = ±5 %)
         smooth_window_sec: rolling-average window length (seconds)
-        max_gap_sec: seconds allowed outside range before breaking a segment
         min_duration_sec: minimum segment duration in seconds
         sampling_rate: samples per second (default 1 Hz)
     """
@@ -437,44 +435,39 @@ def detect_target_segments_rolling(
 
     segments = []
     start = None
-    gap_count = 0
-    max_gap = int(max_gap_sec * sampling_rate)
 
     for i, val in enumerate(in_zone):
         if val:
             if start is None:
                 start = i
-            gap_count = 0
         elif start is not None:
-            gap_count += 1
-            if gap_count > max_gap:
-                end = i - gap_count
-                duration = (end - start + 1) / sampling_rate
-                if duration >= min_duration_sec:
-                    seg_power = power[start:end + 1]
-                    avg_power = np.mean(seg_power)
-                    min_power = np.min(seg_power)
-                    max_power = np.max(seg_power)
-                    cv_pct = 100 * np.std(seg_power) / avg_power
-                    distance_m = dist[end] - dist[start]
-                    pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
-                    start_elapsed = (times.iloc[start] - t0).total_seconds()
-                    end_elapsed = (times.iloc[end] - t0).total_seconds()
-                    segments.append({
-                        "start_idx": start,
-                        "end_idx": end,
-                        "start_elapsed": start_elapsed,
-                        "end_elapsed": end_elapsed,
-                        "duration_s": duration,
-                        "avg_power": avg_power,
-                        "min_power": min_power,
-                        "max_power": max_power,
-                        "distance_m": distance_m,
-                        "pace_per_km": pace_per_km,
-                        "cv_%": cv_pct,
-                    })
-                start = None
-                gap_count = 0
+            # segment ends when we exit the zone
+            end = i - 1
+            duration = (end - start + 1) / sampling_rate
+            if duration >= min_duration_sec:
+                seg_power = power[start:end + 1]
+                avg_power = np.mean(seg_power)
+                min_power = np.min(seg_power)
+                max_power = np.max(seg_power)
+                cv_pct = 100 * np.std(seg_power) / avg_power
+                distance_m = dist[end] - dist[start]
+                pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
+                start_elapsed = (times.iloc[start] - t0).total_seconds()
+                end_elapsed = (times.iloc[end] - t0).total_seconds()
+                segments.append({
+                    "start_idx": start,
+                    "end_idx": end,
+                    "start_elapsed": start_elapsed,
+                    "end_elapsed": end_elapsed,
+                    "duration_s": duration,
+                    "avg_power": avg_power,
+                    "min_power": min_power,
+                    "max_power": max_power,
+                    "distance_m": distance_m,
+                    "pace_per_km": pace_per_km,
+                    "cv_%": cv_pct,
+                })
+            start = None
 
     # --- Handle segment continuing to end
     if start is not None:
@@ -506,3 +499,4 @@ def detect_target_segments_rolling(
 
     # Sort and return
     return sorted(segments, key=lambda x: x["start_elapsed"])
+
