@@ -12,7 +12,7 @@ from cp_utils import (
     running_effectiveness,
     detect_stable_segments_rolling,  # only current detection function
 )
-from docs import render_docs
+from docs import render_documentation
 
 # --- Helper: Styled Result Card ---
 def show_result_card(title: str, main_value: str, subtext: str = "", color: str = "#0b5394"):
