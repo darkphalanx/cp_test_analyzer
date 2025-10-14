@@ -131,12 +131,10 @@ def compute_cp_5k_range(p):
 
 # ---------- Segment Detection & Running Effectiveness ---------- #
 
-def detect_segments(df, target_power, tolerance=0.05, min_duration_sec=300, sampling_rate=1):
+def detect_segments(df, target_power, tolerance=0.05, min_duration_sec=300, sampling_rate=1, max_gap_sec=5):
     """
-    Detect continuous segments where average power stays within ±tolerance of target_power
-    for at least min_duration_sec seconds.
-
-    Returns a chronologically sorted list with elapsed start/end times (HH:MM:SS).
+    Detect continuous segments where average power stays within ±tolerance of target_power,
+    allowing brief gaps (max_gap_sec) before ending a segment.
     """
     import pandas as pd
 
@@ -152,43 +150,45 @@ def detect_segments(df, target_power, tolerance=0.05, min_duration_sec=300, samp
     times = pd.to_datetime(df["timestamp"], errors="coerce").reset_index(drop=True)
 
     t0 = times.iloc[0]
-
     lower = target_power * (1 - tolerance)
     upper = target_power * (1 + tolerance)
     in_zone = (power >= lower) & (power <= upper)
 
     segments = []
     start = None
+    gap_count = 0
+    max_gap = int(max_gap_sec * sampling_rate)
 
     for i, val in enumerate(in_zone):
-        if val and start is None:
-            start = i
-        elif not val and start is not None:
-            end = i - 1
-            duration = (end - start + 1) / sampling_rate
-            if duration >= min_duration_sec:
-                avg_power = power[start:end + 1].mean()
-                distance_m = dist[end] - dist[start]
-                pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
+        if val:
+            if start is None:
+                start = i
+            gap_count = 0
+        elif start is not None:
+            gap_count += 1
+            if gap_count > max_gap:
+                end = i - gap_count
+                duration = (end - start + 1) / sampling_rate
+                if duration >= min_duration_sec:
+                    avg_power = power[start:end + 1].mean()
+                    distance_m = dist[end] - dist[start]
+                    pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
+                    elapsed_start = str(pd.to_timedelta((times.iloc[start] - t0).total_seconds(), unit="s")).split()[-1]
+                    elapsed_end = str(pd.to_timedelta((times.iloc[end] - t0).total_seconds(), unit="s")).split()[-1]
+                    segments.append({
+                        "start_idx": start,
+                        "end_idx": end,
+                        "elapsed_start": elapsed_start,
+                        "elapsed_end": elapsed_end,
+                        "duration_s": duration,
+                        "avg_power": avg_power,
+                        "distance_m": distance_m,
+                        "pace_per_km": pace_per_km
+                    })
+                start = None
+                gap_count = 0
 
-                start_time = times.iloc[start]
-                end_time = times.iloc[end]
-                elapsed_start = (start_time - t0).total_seconds()
-                elapsed_end = (end_time - t0).total_seconds()
-
-                segments.append({
-                    "start_idx": start,
-                    "end_idx": end,
-                    "elapsed_start": str(pd.to_timedelta(elapsed_start, unit="s")),
-                    "elapsed_end": str(pd.to_timedelta(elapsed_end, unit="s")),
-                    "duration_s": duration,
-                    "avg_power": avg_power,
-                    "distance_m": distance_m,
-                    "pace_per_km": pace_per_km
-                })
-            start = None
-
-    # Handle case where segment continues to end
+    # Handle segment to end
     if start is not None:
         end = len(in_zone) - 1
         duration = (end - start + 1) / sampling_rate
@@ -196,27 +196,20 @@ def detect_segments(df, target_power, tolerance=0.05, min_duration_sec=300, samp
             avg_power = power[start:end + 1].mean()
             distance_m = dist[end] - dist[start]
             pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
-
-            start_time = times.iloc[start]
-            end_time = times.iloc[end]
-            elapsed_start = (start_time - t0).total_seconds()
-            elapsed_end = (end_time - t0).total_seconds()
-
+            elapsed_start = str(pd.to_timedelta((times.iloc[start] - t0).total_seconds(), unit="s")).split()[-1]
+            elapsed_end = str(pd.to_timedelta((times.iloc[end] - t0).total_seconds(), unit="s")).split()[-1]
             segments.append({
                 "start_idx": start,
                 "end_idx": end,
-                "elapsed_start": str(datetime.timedelta(seconds=int(elapsed_start))),
-                "elapsed_end": str(datetime.timedelta(seconds=int(elapsed_end))),
+                "elapsed_start": elapsed_start,
+                "elapsed_end": elapsed_end,
                 "duration_s": duration,
                 "avg_power": avg_power,
                 "distance_m": distance_m,
                 "pace_per_km": pace_per_km
             })
 
-    # Sort segments chronologically
-    segments = sorted(segments, key=lambda x: x["elapsed_start"])
-    return segments
-
+    return sorted(segments, key=lambda x: x["elapsed_start"])
 
 def detect_stable_power_segments(df, max_std_ratio=0.05, min_duration_sec=300, sampling_rate=1):
     """
