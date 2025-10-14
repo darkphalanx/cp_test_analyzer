@@ -127,3 +127,94 @@ def compute_cp_5k_range(p):
         "Anaerobic": 0.965,   # Fast fatigue (power-focused)
     }
     return {label: p * factor for label, factor in profiles.items()}
+
+# ---------- Segment Detection & Running Effectiveness ---------- #
+
+def detect_segments(df, target_power, tolerance=0.05, min_duration_sec=300, sampling_rate=1):
+    """
+    Detect continuous segments where average power stays within ±tolerance of target_power
+    for at least min_duration_sec seconds.
+
+    Args:
+        df: DataFrame with 'power' and 'Watch Distance (meters)' columns.
+        target_power: target power in Watts (float).
+        tolerance: fractional tolerance (0.05 = ±5%).
+        min_duration_sec: minimum segment duration to be considered (seconds).
+        sampling_rate: samples per second (default 1).
+
+    Returns:
+        List of dicts: each containing start_idx, end_idx, duration, avg_power,
+        distance_m, pace_per_km, and RE placeholder (to compute later).
+    """
+    import pandas as pd
+
+    if "power" not in df.columns:
+        raise ValueError("Column 'power' not found in DataFrame.")
+    if "Watch Distance (meters)" not in df.columns:
+        raise ValueError("Column 'Watch Distance (meters)' not found in DataFrame.")
+
+    power = df["power"].to_numpy()
+    dist = pd.to_numeric(df["Watch Distance (meters)"], errors="coerce").ffill().to_numpy()
+
+    lower = target_power * (1 - tolerance)
+    upper = target_power * (1 + tolerance)
+
+    in_zone = (power >= lower) & (power <= upper)
+
+    segments = []
+    start = None
+
+    for i, val in enumerate(in_zone):
+        if val and start is None:
+            start = i
+        elif not val and start is not None:
+            end = i - 1
+            duration = (end - start + 1) / sampling_rate
+            if duration >= min_duration_sec:
+                avg_power = power[start:end+1].mean()
+                distance_m = dist[end] - dist[start]
+                pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
+                segments.append({
+                    "start_idx": start,
+                    "end_idx": end,
+                    "duration_s": duration,
+                    "avg_power": avg_power,
+                    "distance_m": distance_m,
+                    "pace_per_km": pace_per_km
+                })
+            start = None
+
+    # Handle case where segment extends to end
+    if start is not None:
+        end = len(in_zone) - 1
+        duration = (end - start + 1) / sampling_rate
+        if duration >= min_duration_sec:
+            avg_power = power[start:end+1].mean()
+            distance_m = dist[end] - dist[start]
+            pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
+            segments.append({
+                "start_idx": start,
+                "end_idx": end,
+                "duration_s": duration,
+                "avg_power": avg_power,
+                "distance_m": distance_m,
+                "pace_per_km": pace_per_km
+            })
+
+    return segments
+
+
+def running_effectiveness(distance_m, duration_s, power_w, weight_kg):
+    """
+    Compute Running Effectiveness (RE).
+
+    RE = (velocity * weight_kg) / power_w
+    where velocity = distance_m / duration_s.
+
+    Returns:
+        Running Effectiveness (float)
+    """
+    if duration_s <= 0 or power_w <= 0:
+        return None
+    velocity = distance_m / duration_s  # m/s
+    return (velocity * weight_kg) / power_w

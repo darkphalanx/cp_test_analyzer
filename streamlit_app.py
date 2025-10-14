@@ -2,7 +2,8 @@ import streamlit as st
 import pandas as pd
 from cp_utils import (
     load_csv_auto, best_avg_power, best_power_for_distance,
-    extend_best_segment, compute_cp_linear, compute_cp_5k_range
+    extend_best_segment, compute_cp_linear, compute_cp_5k_range,
+    detect_segments, running_effectiveness
 )
 
 from datetime import timedelta
@@ -75,11 +76,19 @@ with st.sidebar:
         "Select test type:",
         [
             "3/12-minute CP Test",
-            "5K Time Trial"
+            "5K Time Trial",
+            "Segment Analysis (Running Effectiveness)"
         ],
         horizontal=False
     )
 
+    if "Segment Analysis" in test_choice:
+        st.markdown("---")
+        st.subheader("Segment Detection Settings")
+        target_power = st.number_input("🎯 Target Power (W)", min_value=100.0, max_value=600.0, step=1.0)
+        tolerance = st.slider("± Power Tolerance (%)", min_value=1, max_value=10, value=5) / 100
+        min_duration = st.number_input("⏱️ Minimum Duration (minutes)", min_value=3, max_value=60, value=10) * 60
+    
     st.markdown("---")
     run_analysis = st.button("🚀 Run Analysis")
 
@@ -170,7 +179,7 @@ if run_analysis:
     # ==============================================================
     # 5K Time Trial
     # ==============================================================
-    else:
+    elif "5K" in test_choice:
         best5k, s5k, e5k = best_power_for_distance(df, 5000)
         ext5k = extend_best_segment(df, s5k, e5k, best5k)
         t5k = int(ext5k[3])
@@ -238,6 +247,46 @@ if run_analysis:
             f"Typical profile ≈ {cp_mid:.1f} W",
             color="#ff8800"  # orange accent
         )
+        
+# ==============================================================
+# Segment Analysis (Running Effectiveness)
+# ==============================================================
+elif "Segment Analysis" in test_choice:
+    segments = detect_segments(df, target_power=target_power, tolerance=tolerance, min_duration_sec=min_duration)
+
+    if not segments:
+        st.warning("No stable power segments found within the specified range and duration.")
+        st.stop()
+
+    # Compute RE for each detected segment
+    for seg in segments:
+        seg["RE"] = running_effectiveness(
+            seg["distance_m"], seg["duration_s"], seg["avg_power"], stryd_weight
+        )
+
+    # Format for display
+    seg_df = pd.DataFrame([
+        {
+            "Segment #": i + 1,
+            "Duration": str(timedelta(seconds=int(seg["duration_s"]))),
+            "Avg Power (W)": f"{seg['avg_power']:.1f}",
+            "Distance (m)": f"{seg['distance_m']:.0f}",
+            "Pace (/km)": str(timedelta(seconds=int(seg["pace_per_km"]))) if seg["pace_per_km"] else "–",
+            "Running Effectiveness": f"{seg['RE']:.3f}" if seg["RE"] else "–"
+        }
+        for i, seg in enumerate(segments)
+    ])
+
+    st.subheader("Detected Segments")
+    st.dataframe(seg_df, use_container_width=True)
+
+    avg_re = np.nanmean([seg["RE"] for seg in segments if seg["RE"]])
+    show_result_card(
+        "Average Running Effectiveness",
+        f"{avg_re:.3f}",
+        "Typical values: 0.98 – 1.05 for most runners",
+        color="#16a34a"  # green accent
+    )
 
 st.markdown("---")
 render_documentation()
