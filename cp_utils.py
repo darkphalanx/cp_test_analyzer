@@ -138,7 +138,7 @@ def detect_segments(
     min_duration_sec=300,
     sampling_rate=1,
     max_gap_sec=5,
-    smooth_window_sec=30,
+    smooth_window_sec=7,
 ):
     """
     Detect continuous segments where average power stays within ±tolerance of target_power,
