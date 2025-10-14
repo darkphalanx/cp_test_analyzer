@@ -139,16 +139,29 @@ if run_analysis:
     # Normalize power column
     if "power (w)" in df.columns:
         df.rename(columns={"power (w)": "power"}, inplace=True)
+    elif "power (w/kg)" in df.columns:
+        df.rename(columns={"power (w/kg)": "power_wkg"}, inplace=True)
+
+    # Normalize time column (only if not already timestamp)
+    time_col = next((c for c in df.columns if "time" in c and "stamp" not in c), None)
+    if time_col and "timestamp" not in df.columns:
+        df["timestamp"] = pd.to_datetime(df[time_col], unit="s", errors="coerce")
 
     # Normalize distance column for all tests
+    dist_candidates = [
+        "watch distance (meters)",
+        "distance (m)",
+        "distance",
+        "stryd distance (m)",
+    ]
+    for candidate in dist_candidates:
+        if candidate in df.columns:
+            df.rename(columns={candidate: "watch distance (meters)"}, inplace=True)
+            break
+
+    # If no valid distance found, try to infer one (fill with 0)
     if "watch distance (meters)" not in df.columns:
-        dist_col = next(
-            (c for c in df.columns
-             if "distance" in c and "(m" in c),
-            None
-        )
-        if dist_col:
-            df.rename(columns={dist_col: "watch distance (meters)"}, inplace=True)
+        df["watch distance (meters)"] = 0
 
     time_col = [c for c in df.columns if "time" in c.lower()][0]
     df["timestamp"] = pd.to_datetime(df[time_col], unit="s", errors="coerce")
@@ -388,11 +401,12 @@ if run_analysis:
 
         avg_re = np.nanmean([seg.get("RE") for seg in segments_display if seg.get("RE") is not None])
         show_result_card(
-            "Average Running Effectiveness",
-            f"{avg_re:.3f}",
-            "Typical values: 0.98 – 1.05 for most runners",
+            "Running Effectiveness (test total)",
+            f"{RE:.3f}" if RE else "–",
+            "Typical values: 0.98–1.05",
             color="#16a34a"
         )
+
 
 
 
