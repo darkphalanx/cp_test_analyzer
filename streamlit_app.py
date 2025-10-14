@@ -109,9 +109,10 @@ with st.sidebar:
         if test_choice == "Segment Analysis":
             smooth_window = st.slider("Smoothing Window (sec)", 1, 15, 5)
             max_std = st.slider("Max Power Variability (%)", 1, 10, 5) / 100
-            max_gap = st.slider("Allowed Gap (sec)", 0, 120, 30)
+            max_gap = st.slider("Allowed Gap (sec)", 0, 60, 10)
+            max_gap_total = st.slider("Total Instability Allowed (sec)", 0, 120, 40,
+                help="Maximum total time of instability (power spikes, stops) tolerated before splitting a segment.")
             min_duration = st.number_input("⏱️ Minimum Duration (minutes)", 3, 60, 10) * 60
-
 
     st.markdown("---")
     run_analysis = st.button("🚀 Run Analysis")
@@ -282,6 +283,7 @@ if run_analysis:
             max_std_ratio=max_std,
             smooth_window_sec=smooth_window,
             max_gap_sec=max_gap,
+            max_gap_total_sec=max_gap_total,   # new slider value
             min_duration_sec=min_duration,
         )
 
