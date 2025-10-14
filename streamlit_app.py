@@ -86,7 +86,7 @@ with st.sidebar:
         st.markdown("---")
         auto_mode = st.toggle("🔍 Auto-detect stable segments", value=True)
         st.subheader("Segment Detection Settings")
-        max_gap = st.slider("Allow brief gap (sec)", 0, 10, 5)
+        max_gap = st.number_input("Allow brief gap (sec)", 0, 120, 10)
 
         if auto_mode:
             max_std = st.slider("Max Power Variability (%)", 1, 10, 5) / 100
