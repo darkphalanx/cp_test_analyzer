@@ -283,8 +283,8 @@ if run_analysis:
 
         seg_df = pd.DataFrame([
             {
-                "Start": seg["elapsed_start"],
-                "End": seg["elapsed_end"],
+                "Start": str(datetime.timedelta(seconds=int(seg["start_elapsed"]))),
+                "End": str(datetime.timedelta(seconds=int(seg["end_elapsed"]))),
                 "Duration": str(timedelta(seconds=int(seg["duration_s"]))),
                 "Min Power (W)": f"{seg['min_power']:.1f}",
                 "Avg Power (W)": f"{seg['avg_power']:.1f}",
