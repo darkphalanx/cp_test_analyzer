@@ -90,20 +90,6 @@ with st.sidebar:
         index=2,
     )
 
-    # --- Critical Power Section ---
-    with st.expander("⚡ Critical Power Settings", expanded=(test_choice == "Critical Power Test")):
-        if test_choice == "Critical Power Test":
-            cp_window_min = st.slider("Minimum Window (min)", 1, 20, 3)
-            cp_window_max = st.slider("Maximum Window (min)", 5, 60, 12)
-            cp_smoothing = st.slider("Smoothing (sec)", 0, 15, 5)
-            show_extended = st.checkbox("Show Extended Stats", value=True)
-
-    # --- 5K Section ---
-    with st.expander("🏃 5K Test Settings", expanded=(test_choice == "5K Test")):
-        if test_choice == "5K Test":
-            time_window = st.slider("Rolling Window (sec)", 1, 30, 5)
-            show_details = st.checkbox("Show Split Details", value=True)
-
     # --- Segment Analysis Section ---
     with st.expander("📊 Segment Detection", expanded=(test_choice == "Segment Analysis")):
         if test_choice == "Segment Analysis":
@@ -146,6 +132,23 @@ if run_analysis:
 
     # --- Load and prepare data ---
     df = load_csv_auto(uploaded_file)
+
+    # --- Normalize key columns for consistent naming ---
+    df.columns = [c.strip().lower() for c in df.columns]
+
+    # Normalize power column
+    if "power (w)" in df.columns:
+        df.rename(columns={"power (w)": "power"}, inplace=True)
+
+    # Normalize distance column for all tests
+    if "watch distance (meters)" not in df.columns:
+        dist_col = next(
+            (c for c in df.columns
+             if "distance" in c and "(m" in c),
+            None
+        )
+        if dist_col:
+            df.rename(columns={dist_col: "watch distance (meters)"}, inplace=True)
 
     time_col = [c for c in df.columns if "time" in c.lower()][0]
     df["timestamp"] = pd.to_datetime(df[time_col], unit="s", errors="coerce")
