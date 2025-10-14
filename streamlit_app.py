@@ -74,7 +74,7 @@ with st.sidebar:
     )
     
      # --- Stryd weight Section ---
-     stryd_weight = st.number_input(
+    stryd_weight = st.number_input(
         "⚖️ Stryd Weight (kg)",
         min_value=40.0,
         max_value=120.0,
