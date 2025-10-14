@@ -148,12 +148,12 @@ def detect_segments(df, target_power, tolerance=0.05, min_duration_sec=300, samp
     """
     import pandas as pd
 
-    if "Power (w/kg)" not in df.columns:
-        raise ValueError("Column 'power' not found in DataFrame.")
+    if "power" not in df.columns:
+        raise ValueError("Column 'Power (w/kg)' not found in DataFrame.")
     if "Watch Distance (meters)" not in df.columns:
         raise ValueError("Column 'Watch Distance (meters)' not found in DataFrame.")
 
-    power = df["Power (w/kg)"].to_numpy()
+    power = pd.to_numeric(df["power"], errors="coerce").to_numpy()
     dist = pd.to_numeric(df["Watch Distance (meters)"], errors="coerce").ffill().to_numpy()
 
     lower = target_power * (1 - tolerance)
@@ -220,12 +220,12 @@ def detect_stable_power_segments(df, max_std_ratio=0.05, min_duration_sec=300, s
     import pandas as pd
     import numpy as np
 
-    if "Power (w/kg)" not in df.columns:
-        raise ValueError("Column 'power' not found in DataFrame.")
+    if "power" not in df.columns:
+        raise ValueError("Column 'Power (w/kg)' not found in DataFrame.")
     if "Watch Distance (meters)" not in df.columns:
         raise ValueError("Column 'Watch Distance (meters)' not found in DataFrame.")
 
-    power = df["Power (w/kg)"].to_numpy()
+    power = pd.to_numeric(df["power"], errors="coerce").to_numpy()
     dist = pd.to_numeric(df["Watch Distance (meters)"], errors="coerce").ffill().to_numpy()
 
     window = int(min_duration_sec * sampling_rate)
