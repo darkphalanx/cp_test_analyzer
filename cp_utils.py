@@ -171,8 +171,7 @@ def detect_segments(df, target_power, tolerance=0.05, min_duration_sec=300, samp
                 duration = (end - start + 1) / sampling_rate
                 if duration >= min_duration_sec:
                     avg_power = power[start:end + 1].mean()
-                    min_power = power[start:end + 1].min()
-                    max_power = power[start:end + 1].max()
+                    avg_min_power, avg_max_power = average_min_max(power[start:end + 1], chunk_size=10, sampling_rate=sampling_rate)
                     distance_m = dist[end] - dist[start]
                     pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
                     elapsed_start = str(pd.to_timedelta((times.iloc[start] - t0).total_seconds(), unit="s")).split()[-1]
@@ -184,8 +183,8 @@ def detect_segments(df, target_power, tolerance=0.05, min_duration_sec=300, samp
                         "elapsed_end": elapsed_end,
                         "duration_s": duration,
                         "avg_power": avg_power,
-                        "min_power": min_power,
-                        "max_power": max_power,
+                        "min_power": avg_min_power,
+                        "max_power": avg_max_power,
                         "distance_m": distance_m,
                         "pace_per_km": pace_per_km
                     })
@@ -198,8 +197,7 @@ def detect_segments(df, target_power, tolerance=0.05, min_duration_sec=300, samp
         duration = (end - start + 1) / sampling_rate
         if duration >= min_duration_sec:
             avg_power = power[start:end + 1].mean()
-            min_power = power[start:end + 1].min()
-            max_power = power[start:end + 1].max()            
+            avg_min_power, avg_max_power = average_min_max(power[start:end + 1], chunk_size=10, sampling_rate=sampling_rate)       
             distance_m = dist[end] - dist[start]
             pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
             elapsed_start = str(pd.to_timedelta((times.iloc[start] - t0).total_seconds(), unit="s")).split()[-1]
@@ -211,8 +209,8 @@ def detect_segments(df, target_power, tolerance=0.05, min_duration_sec=300, samp
                 "elapsed_end": elapsed_end,
                 "duration_s": duration,
                 "avg_power": avg_power,
-                "min_power": min_power,
-                "max_power": max_power,                
+                "min_power": avg_min_power,
+                "max_power": avg_max_power,                
                 "distance_m": distance_m,
                 "pace_per_km": pace_per_km
             })
@@ -278,8 +276,7 @@ def detect_stable_power_segments(
             duration = (j - i) / sampling_rate
             if duration >= min_duration_sec:
                 avg_power = power[i:j].mean()
-                min_power = power[i:j].min()
-                max_power = power[i:j].max()
+                avg_min_power, avg_max_power = average_min_max(power[start:end + 1], chunk_size=10, sampling_rate=sampling_rate)
                 distance_m = dist[j - 1] - dist[i]
                 pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
                 elapsed_start = str(datetime.timedelta(seconds=int((times.iloc[i] - t0).total_seconds())))
@@ -291,8 +288,8 @@ def detect_stable_power_segments(
                     "elapsed_end": elapsed_end,
                     "duration_s": duration,
                     "avg_power": avg_power,
-                    "min_power": min_power,
-                    "max_power": max_power,
+                    "min_power": avg_min_power,
+                    "max_power": avg_max_power,
                     "distance_m": distance_m,
                     "pace_per_km": pace_per_km
                 })
@@ -317,3 +314,27 @@ def running_effectiveness(distance_m, duration_s, power_w, weight_kg):
         return None
     velocity = distance_m / duration_s  # m/s
     return (velocity * weight_kg) / power_w
+
+def average_min_max(power_array, chunk_size=10, sampling_rate=1):
+    """
+    Compute average of minimums and maximums over fixed-duration chunks.
+
+    Args:
+        power_array: np.array of power values.
+        chunk_size: size of each chunk in seconds.
+        sampling_rate: samples per second.
+    Returns:
+        (avg_min, avg_max)
+    """
+    import numpy as np
+
+    samples_per_chunk = int(chunk_size * sampling_rate)
+    n = len(power_array)
+    mins, maxs = [], []
+    for i in range(0, n, samples_per_chunk):
+        chunk = power_array[i:i + samples_per_chunk]
+        if len(chunk) == 0:
+            continue
+        mins.append(np.min(chunk))
+        maxs.append(np.max(chunk))
+    return (np.mean(mins), np.mean(maxs))
