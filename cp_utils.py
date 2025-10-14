@@ -504,92 +504,77 @@ def detect_stable_segments_rolling(
     df,
     max_std_ratio=0.05,
     smooth_window_sec=6,
-    allowed_spike_sec=5,     # max consecutive seconds outside variability
+    allowed_spike_sec=5,      # max consecutive unstable seconds allowed
     sampling_rate=1,
-    pause_threshold_w=5,     # stops (<5 W) end segment immediately
+    pause_threshold_w=5,      # power below this is "low power"
+    pause_min_sec=3,          # require this many consecutive low-power seconds
+    min_speed_mps=0.5,        # also require near-zero speed to call it a stop
+    show_diagnostics=True,    # show a small caption in Streamlit if available
 ):
     """
     Detect low-variability (stable) segments using a rolling window.
-    - Stability: rolling_std / rolling_mean <= max_std_ratio
-    - Allowed spikes: up to 'allowed_spike_sec' consecutive unstable samples
-    - Stops: power < pause_threshold_w ends segment immediately (separate segment)
-    - Adds 'end_reason' to each segment ("stop/pause ~Xs", "instability spike > Xs", "end of file")
-    - NOTE: No minimum-duration filtering; every closed segment is returned.
-    """
-    import pandas as pd, numpy as np, datetime
 
+    Stability rule (per second): rolling_std / rolling_mean <= max_std_ratio.
+    • Allowed spikes: tolerate up to `allowed_spike_sec` consecutive unstable seconds.
+    • Debounced stop: if power < pause_threshold_w AND speed <= min_speed_mps
+      for >= pause_min_sec, end the segment immediately (hard split).
+    • Each segment carries an `end_reason`: "stop/pause ≥Xs", "instability spike > Xs", or "end of file".
+    • No minimum-duration filter here; return every closed segment.
+    """
+    import numpy as np
+    import pandas as pd
+
+    # ---- Validate columns
     for col in ["power", "Watch Distance (meters)", "timestamp"]:
         if col not in df.columns:
             raise ValueError(f"Column '{col}' not found in DataFrame.")
 
+    # ---- Rolling stats for stability (centered mean works fine here)
     window = int(smooth_window_sec * sampling_rate)
-    roll_mean = df["power"].rolling(window=window, min_periods=1).mean()
-    roll_std  = df["power"].rolling(window=window, min_periods=1).std()
+    roll_mean = df["power"].rolling(window=window, center=False, min_periods=1).mean()
+    roll_std  = df["power"].rolling(window=window, center=False, min_periods=1).std()
+
+    # Per-second stability flag
     stability_ok = (roll_std / roll_mean).fillna(0) <= max_std_ratio
 
-    # --- Diagnostics (safe & parameterized) ---
-    # Treat near-zero mean as unstable to avoid inflating stability during stops.
-    import numpy as np
-    eps = 1e-6
-    safe_mean = roll_mean.where(roll_mean.abs() > eps, np.nan)
-    stability = (roll_std / safe_mean).replace([np.inf, -np.inf], np.nan).fillna(1.0)
-    stable_mask = (stability <= max_std_ratio)
-
-    # Longest consecutive True run, robust for all edge cases
-    vals = stable_mask.values.astype(np.uint8)
-    if vals.size:
-        # positions where value changes
-        change_pos = np.where(np.diff(vals) != 0)[0] + 1
-        # segment boundaries
-        boundaries = np.concatenate(([0], change_pos, [len(vals)]))
-        # lengths per run
-        lengths = np.diff(boundaries)
-        # state for each run (0/1)
-        states = vals[boundaries[:-1]]
-        # longest True run (in samples)
-        longest_true_samples = lengths[states == 1].max() if np.any(states == 1) else 0
-    else:
-        longest_true_samples = 0
-
-    longest_streak_sec = int(longest_true_samples // 1)  # sampling_rate is 1 Hz here
-
-    # Display only when Streamlit is present
-    try:
-        import streamlit as st
-        st.caption(
-            f"Stability diagnostics — {100*stable_mask.mean():.1f}% ≤ {int(max_std_ratio*100)}% variability; "
-            f"longest continuous stable streak: {longest_streak_sec}s with smoothing {int(smooth_window_sec)}s."
-        )
-    except Exception:
-        pass
-
-        
-
-    smooth_power = roll_mean.to_numpy()
+    # Use rolling mean as our "smoothed power" for segment stats
+    smooth_power = pd.to_numeric(roll_mean, errors="coerce").to_numpy()
     raw_power    = pd.to_numeric(df["power"], errors="coerce").to_numpy()
-    dist         = pd.to_numeric(df["Watch Distance (meters)"], errors="coerce").ffill().to_numpy()
-    times        = pd.to_datetime(df["timestamp"], errors="coerce").reset_index(drop=True)
+
+    # Distance and speed (assume 1 Hz)
+    dist  = pd.to_numeric(df["Watch Distance (meters)"], errors="coerce").ffill().to_numpy()
+    speed = np.concatenate(([0.0], np.diff(dist)))  # m/s at 1 Hz
+
+    # Time axis
+    times = pd.to_datetime(df["timestamp"], errors="coerce").reset_index(drop=True)
     t0 = times.iloc[0]
 
     segments = []
     start = None
     spike_count = 0
-    spike_limit = int(allowed_spike_sec * sampling_rate)
-    n = len(df)
+    pause_run = 0
 
-    def _append_segment(end_idx, reason):
+    spike_limit = int(allowed_spike_sec * sampling_rate)
+    pause_need  = int(pause_min_sec * sampling_rate)
+
+    def append_segment(end_idx: int, reason: str):
+        """Close current segment from `start` to `end_idx` (inclusive)."""
+        nonlocal start, spike_count
+        if start is None:
+            return
         end = max(end_idx, start)
         duration = (end - start + 1) / sampling_rate
-        # keep a tiny guard against zero-length
         if duration <= 0:
             return
-        seg_pow = smooth_power[start:end+1]
-        avg_p = float(np.mean(seg_pow))
-        min_p = float(np.min(seg_pow))
-        max_p = float(np.max(seg_pow))
-        cv_pct = float(100 * np.std(seg_pow) / avg_p) if avg_p > 0 else None
-        distance_m = float(dist[end] - dist[start])
-        pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
+
+        seg_pow = smooth_power[start:end + 1]
+        avg_p = float(np.nanmean(seg_pow))
+        min_p = float(np.nanmin(seg_pow))
+        max_p = float(np.nanmax(seg_pow))
+        cv_pct = float(100 * np.nanstd(seg_pow) / avg_p) if avg_p > 0 else None
+        distance_m = float(dist[end] - dist[start]) if end < len(dist) else float("nan")
+        pace_per_km = (duration / (distance_m / 1000.0)) if distance_m > 0 else None
+
         segments.append({
             "start_idx": start,
             "end_idx": end,
@@ -604,24 +589,40 @@ def detect_stable_segments_rolling(
             "cv_%": cv_pct,
             "end_reason": reason,
         })
+        # reset for next
+        start = None
+        spike_count = 0
 
+    n = len(df)
     for i in range(n):
-        # Hard split on stop/pause
-        if raw_power[i] < pause_threshold_w:
-            # estimate pause length (peek ahead)
-            k = i
-            while k < n and raw_power[k] < pause_threshold_w:
-                k += 1
-            pause_len_sec = (k - i) / sampling_rate
+        low_power = raw_power[i] < pause_threshold_w
+        very_slow = speed[i] <= min_speed_mps
+        is_pause_sample = low_power and very_slow
 
-            if start is not None:
-                end_idx = i - 1 - spike_count  # drop trailing spikes
+        # --- Pause debounce: only split if pause persists for >= pause_min_sec
+        if is_pause_sample:
+            pause_run += 1
+            if start is not None and pause_run == pause_need:
+                # Split at the last stable index before the pause (remove any trailing spikes)
+                end_idx = i - pause_run - spike_count
                 if end_idx >= start:
-                    _append_segment(end_idx, f"stop/pause ~{int(round(pause_len_sec))}s")
-            start = None
-            spike_count = 0
+                    append_segment(end_idx, f"stop/pause ≥{pause_min_sec}s")
+                # If we hit here, we're in a pause; segment is closed
+            # While paused, do not treat each second as an instability spike
             continue
+        else:
+            # We just left a (potential) pause window
+            if pause_run > 0:
+                if start is None:
+                    # We were paused and already closed the segment -> just reset counter
+                    pause_run = 0
+                else:
+                    # Short low-power burst that didn't reach pause_min_sec:
+                    # Count it as instability seconds instead of a hard stop
+                    spike_count += pause_run
+                    pause_run = 0
 
+        # --- Stability / spike logic
         if stability_ok.iloc[i]:
             if start is None:
                 start = i
@@ -630,15 +631,40 @@ def detect_stable_segments_rolling(
             if start is not None:
                 spike_count += 1
                 if spike_count > spike_limit:
-                    end_idx = i - spike_count  # last stable
-                    _append_segment(end_idx, f"instability spike > {allowed_spike_sec}s")
-                    start = None
-                    spike_count = 0
+                    end_idx = i - spike_count  # last stable index
+                    append_segment(end_idx, f"instability spike > {allowed_spike_sec}s")
 
-    # trailing segment
+    # --- Trailing segment (trim trailing spikes or short pause remnants)
     if start is not None:
-        end_idx = n - 1 - spike_count  # drop trailing spikes
-        _append_segment(end_idx, "end of file")
+        end_idx = n - 1 - (spike_count + (pause_run if pause_run < pause_need else 0))
+        end_idx = max(end_idx, start)
+        append_segment(end_idx, "end of file")
+
+    # --- Optional diagnostics: robust & safe
+    if show_diagnostics:
+        try:
+            import streamlit as st
+            # Treat near-zero mean as unstable for diagnostics (avoid inflating stability during stops)
+            eps = 1e-6
+            safe_mean = roll_mean.where(roll_mean.abs() > eps, np.nan)
+            diag_ratio = (roll_std / safe_mean).replace([np.inf, -np.inf], np.nan).fillna(1.0)
+            stable_mask = (diag_ratio <= max_std_ratio)
+
+            vals = stable_mask.values.astype(np.uint8)
+            if vals.size:
+                change_pos = np.where(np.diff(vals) != 0)[0] + 1
+                boundaries = np.concatenate(([0], change_pos, [len(vals)]))
+                lengths = np.diff(boundaries)
+                states = vals[boundaries[:-1]]
+                longest_true = lengths[states == 1].max() if np.any(states == 1) else 0
+            else:
+                longest_true = 0
+
+            st.caption(
+                f"Stability diagnostics — {100*stable_mask.mean():.1f}% ≤ {int(max_std_ratio*100)}% variability; "
+                f"longest continuous stable streak: {int(longest_true)}s with smoothing {int(smooth_window_sec)}s."
+            )
+        except Exception:
+            pass
 
     return sorted(segments, key=lambda x: x["start_elapsed"])
-
