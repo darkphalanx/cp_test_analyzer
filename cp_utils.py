@@ -527,6 +527,25 @@ def detect_stable_segments_rolling(
     roll_std  = df["power"].rolling(window=window, min_periods=1).std()
     stability_ok = (roll_std / roll_mean).fillna(0) <= max_std_ratio
 
+    import numpy as np
+    # Recompute quick diagnostics in the app after loading df:
+    window = smooth_window
+    roll_mean = df["power"].rolling(window=window, min_periods=1).mean()
+    roll_std  = df["power"].rolling(window=window, min_periods=1).std()
+    stability = (roll_std / roll_mean).fillna(0)
+    stable_mask = (stability <= max_std)
+    pct_stable = 100 * stable_mask.mean()
+
+    # longest consecutive stable run
+    runs = np.diff(np.where(np.concatenate(([stable_mask.iloc[0]],
+                                            stable_mask.values[:-1] != stable_mask.values[1:],
+                                            [True])))[0])[::2]
+    longest_streak_sec = int(runs.max()) if len(runs) else 0
+
+    st.caption(f"Stability diagnostics — {pct_stable:.1f}% of samples are ≤ {int(max_std*100)}% variability; "
+               f"longest continuous stable streak: {longest_streak_sec}s with smoothing {window}s.")
+        
+
     smooth_power = roll_mean.to_numpy()
     raw_power    = pd.to_numeric(df["power"], errors="coerce").to_numpy()
     dist         = pd.to_numeric(df["Watch Distance (meters)"], errors="coerce").ffill().to_numpy()
