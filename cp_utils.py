@@ -203,6 +203,66 @@ def detect_segments(df, target_power, tolerance=0.05, min_duration_sec=300, samp
 
     return segments
 
+def detect_stable_power_segments(df, max_std_ratio=0.05, min_duration_sec=300, sampling_rate=1):
+    """
+    Automatically detect steady-state power segments based on low variability.
+
+    Args:
+        df: DataFrame containing 'power' and 'Watch Distance (meters)' columns.
+        max_std_ratio: Maximum allowed ratio (std / mean) within a segment (default 0.05 = 5%).
+        min_duration_sec: Minimum segment duration (seconds).
+        sampling_rate: Samples per second (default = 1 Hz).
+
+    Returns:
+        List of dicts: detected steady segments with start/end indices, duration,
+        avg_power, distance, and pace.
+    """
+    import pandas as pd
+    import numpy as np
+
+    if "power" not in df.columns:
+        raise ValueError("Column 'power' not found in DataFrame.")
+    if "Watch Distance (meters)" not in df.columns:
+        raise ValueError("Column 'Watch Distance (meters)' not found in DataFrame.")
+
+    power = df["power"].to_numpy()
+    dist = pd.to_numeric(df["Watch Distance (meters)"], errors="coerce").ffill().to_numpy()
+
+    window = int(min_duration_sec * sampling_rate)
+    n = len(df)
+
+    segments = []
+    i = 0
+    while i + window < n:
+        segment = power[i:i + window]
+        mean_p = segment.mean()
+        std_p = segment.std()
+        if mean_p > 0 and (std_p / mean_p) <= max_std_ratio:
+            # Extend segment forward while stable
+            j = i + window
+            while j < n:
+                ext_segment = power[i:j]
+                if ext_segment.std() / ext_segment.mean() <= max_std_ratio:
+                    j += 1
+                else:
+                    break
+            duration = (j - i) / sampling_rate
+            avg_power = power[i:j].mean()
+            distance_m = dist[j - 1] - dist[i]
+            pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
+            segments.append({
+                "start_idx": i,
+                "end_idx": j,
+                "duration_s": duration,
+                "avg_power": avg_power,
+                "distance_m": distance_m,
+                "pace_per_km": pace_per_km
+            })
+            i = j  # jump to end of detected block
+        else:
+            i += window // 2  # move forward half window
+
+    return segments
 
 def running_effectiveness(distance_m, duration_s, power_w, weight_kg):
     """

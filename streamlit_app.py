@@ -3,7 +3,7 @@ import pandas as pd
 from cp_utils import (
     load_csv_auto, best_avg_power, best_power_for_distance,
     extend_best_segment, compute_cp_linear, compute_cp_5k_range,
-    detect_segments, running_effectiveness
+    detect_segments, running_effectiveness, detect_stable_power_segments
 )
 
 from datetime import timedelta
@@ -84,11 +84,17 @@ with st.sidebar:
 
     if "Segment Analysis" in test_choice:
         st.markdown("---")
+        auto_mode = st.toggle("🔍 Auto-detect stable segments", value=True)
         st.subheader("Segment Detection Settings")
-        target_power = st.number_input("🎯 Target Power (W)", min_value=100.0, max_value=600.0, step=1.0)
-        tolerance = st.slider("± Power Tolerance (%)", min_value=1, max_value=10, value=5) / 100
-        min_duration = st.number_input("⏱️ Minimum Duration (minutes)", min_value=3, max_value=60, value=10) * 60
-    
+
+        if auto_mode:
+            max_std = st.slider("Max Power Variability (%)", 1, 10, 5) / 100
+            min_duration = st.number_input("⏱️ Minimum Duration (minutes)", 3, 60, 10) * 60
+        else:
+            target_power = st.number_input("🎯 Target Power (W)", 100.0, 600.0, step=1.0)
+            tolerance = st.slider("± Power Tolerance (%)", 1, 10, 5) / 100
+            min_duration = st.number_input("⏱️ Minimum Duration (minutes)", 3, 60, 10) * 60
+
     st.markdown("---")
     run_analysis = st.button("🚀 Run Analysis")
 
@@ -251,7 +257,10 @@ if run_analysis:
     # Segment Analysis (Running Effectiveness)
     # ==============================================================
     elif "Segment Analysis" in test_choice:
-        segments = detect_segments(df, target_power=target_power, tolerance=tolerance, min_duration_sec=min_duration)
+        if 'auto_mode' in locals() and auto_mode:
+            segments = detect_stable_power_segments(df, max_std_ratio=max_std, min_duration_sec=min_duration)
+        else:
+            segments = detect_segments(df, target_power=target_power, tolerance=tolerance, min_duration_sec=min_duration)
 
         if not segments:
             st.warning("No stable power segments found within the specified range and duration.")
