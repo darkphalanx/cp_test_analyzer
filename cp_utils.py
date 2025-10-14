@@ -211,27 +211,39 @@ def detect_segments(df, target_power, tolerance=0.05, min_duration_sec=300, samp
 
     return sorted(segments, key=lambda x: x["elapsed_start"])
 
-def detect_stable_power_segments(df, max_std_ratio=0.05, min_duration_sec=300, sampling_rate=1):
+def detect_stable_power_segments(
+    df,
+    max_std_ratio=0.05,
+    min_duration_sec=300,
+    sampling_rate=1,
+    max_gap_sec=5,
+):
     """
     Automatically detect steady-state power segments based on low variability.
-    Includes elapsed start/end times (HH:MM:SS).
+    Allows brief (max_gap_sec) instability periods before ending a segment.
+
+    Args:
+        df: DataFrame containing 'power', 'Watch Distance (meters)', and 'timestamp'.
+        max_std_ratio: Maximum allowed ratio (std / mean) within a window (default 5%).
+        min_duration_sec: Minimum segment duration (seconds).
+        sampling_rate: Samples per second (default 1 Hz).
+        max_gap_sec: How many seconds of instability are tolerated (default = 5 s).
     """
     import pandas as pd
     import numpy as np
+    import datetime
 
-    if "power" not in df.columns:
-        raise ValueError("Column 'power' not found in DataFrame.")
-    if "Watch Distance (meters)" not in df.columns:
-        raise ValueError("Column 'Watch Distance (meters)' not found in DataFrame.")
-    if "timestamp" not in df.columns:
-        raise ValueError("Column 'timestamp' not found in DataFrame.")
+    for col in ["power", "Watch Distance (meters)", "timestamp"]:
+        if col not in df.columns:
+            raise ValueError(f"Column '{col}' not found in DataFrame.")
 
     power = pd.to_numeric(df["power"], errors="coerce").to_numpy()
     dist = pd.to_numeric(df["Watch Distance (meters)"], errors="coerce").ffill().to_numpy()
     times = pd.to_datetime(df["timestamp"], errors="coerce").reset_index(drop=True)
-
     t0 = times.iloc[0]
+
     window = int(min_duration_sec * sampling_rate)
+    max_gap = int(max_gap_sec * sampling_rate)
     n = len(df)
 
     segments = []
@@ -242,38 +254,41 @@ def detect_stable_power_segments(df, max_std_ratio=0.05, min_duration_sec=300, s
         std_p = segment.std()
         if mean_p > 0 and (std_p / mean_p) <= max_std_ratio:
             j = i + window
+            gap_count = 0
             while j < n:
                 ext_segment = power[i:j]
-                if ext_segment.std() / ext_segment.mean() <= max_std_ratio:
+                mean_ext = ext_segment.mean()
+                std_ext = ext_segment.std()
+                if mean_ext > 0 and (std_ext / mean_ext) <= max_std_ratio:
                     j += 1
+                    gap_count = 0
                 else:
-                    break
+                    gap_count += 1
+                    if gap_count > max_gap:
+                        break
+                    j += 1
             duration = (j - i) / sampling_rate
-            avg_power = power[i:j].mean()
-            distance_m = dist[j - 1] - dist[i]
-            pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
-
-            start_time = times.iloc[i]
-            end_time = times.iloc[j - 1]
-            elapsed_start = (start_time - t0).total_seconds()
-            elapsed_end = (end_time - t0).total_seconds()
-
-            segments.append({
-                "start_idx": i,
-                "end_idx": j,
-                "elapsed_start": str(datetime.timedelta(seconds=int(elapsed_start))),
-                "elapsed_end": str(datetime.timedelta(seconds=int(elapsed_end))),
-                "duration_s": duration,
-                "avg_power": avg_power,
-                "distance_m": distance_m,
-                "pace_per_km": pace_per_km
-            })
+            if duration >= min_duration_sec:
+                avg_power = power[i:j].mean()
+                distance_m = dist[j - 1] - dist[i]
+                pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
+                elapsed_start = str(datetime.timedelta(seconds=int((times.iloc[i] - t0).total_seconds())))
+                elapsed_end = str(datetime.timedelta(seconds=int((times.iloc[j - 1] - t0).total_seconds())))
+                segments.append({
+                    "start_idx": i,
+                    "end_idx": j,
+                    "elapsed_start": elapsed_start,
+                    "elapsed_end": elapsed_end,
+                    "duration_s": duration,
+                    "avg_power": avg_power,
+                    "distance_m": distance_m,
+                    "pace_per_km": pace_per_km
+                })
             i = j
         else:
             i += window // 2
 
-    segments = sorted(segments, key=lambda x: x["elapsed_start"])
-    return segments
+    return sorted(segments, key=lambda x: x["elapsed_start"])
 
 
 def running_effectiveness(distance_m, duration_s, power_w, weight_kg):
