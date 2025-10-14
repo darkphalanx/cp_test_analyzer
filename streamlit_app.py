@@ -115,15 +115,26 @@ with st.sidebar:
             )
             min_duration = st.number_input("⏱️ Minimum Duration (minutes)", 3, 60, 5) * 60
 
+            # --- Presets based on sensitivity ---
             if sensitivity == "Low":
                 smooth_window, max_std, max_pause, total_tolerance = 8, 0.06, 15, 60
             elif sensitivity == "High":
                 smooth_window, max_std, max_pause, total_tolerance = 4, 0.035, 5, 30
-            else:
+            else:  # Medium
                 smooth_window, max_std, max_pause, total_tolerance = 6, 0.045, 8, 45
 
-            # Optional Advanced mode for fine-tuning
-            with st.expander("⚙️ Advanced Pause Handling", expanded=False):
+            # --- Advanced options (optional override) ---
+            with st.expander("⚙️ Advanced Pause & Variability Settings", expanded=False):
+                smooth_window = st.slider(
+                    "📈 Smoothing Window (sec)",
+                    1, 15, smooth_window,
+                    help="Rolling average window for power stability calculation."
+                )
+                max_std = st.slider(
+                    "📊 Power Variability Threshold (%)",
+                    2, 10, int(max_std * 100),
+                    help="How strict the stability check is (lower = more sensitive)."
+                ) / 100
                 max_pause = st.slider(
                     "🕐 Max Pause Duration (sec)",
                     0, 60, max_pause,
@@ -308,6 +319,7 @@ if run_analysis:
             max_gap_total_sec=total_tolerance,
             min_duration_sec=min_duration,
         )
+
 
         if not segments:
             st.warning("No stable power segments found within the specified range and duration.")
