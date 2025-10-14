@@ -248,45 +248,43 @@ if run_analysis:
             color="#ff8800"  # orange accent
         )
         
-# ==============================================================
-# Segment Analysis (Running Effectiveness)
-# ==============================================================
-elif "Segment Analysis" in test_choice:
-    segments = detect_segments(df, target_power=target_power, tolerance=tolerance, min_duration_sec=min_duration)
+    # ==============================================================
+    # Segment Analysis (Running Effectiveness)
+    # ==============================================================
+    elif "Segment Analysis" in test_choice:
+        segments = detect_segments(df, target_power=target_power, tolerance=tolerance, min_duration_sec=min_duration)
 
-    if not segments:
-        st.warning("No stable power segments found within the specified range and duration.")
-        st.stop()
+        if not segments:
+            st.warning("No stable power segments found within the specified range and duration.")
+            st.stop()
 
-    # Compute RE for each detected segment
-    for seg in segments:
-        seg["RE"] = running_effectiveness(
-            seg["distance_m"], seg["duration_s"], seg["avg_power"], stryd_weight
+        for seg in segments:
+            seg["RE"] = running_effectiveness(
+                seg["distance_m"], seg["duration_s"], seg["avg_power"], stryd_weight
+            )
+
+        seg_df = pd.DataFrame([
+            {
+                "Segment #": i + 1,
+                "Duration": str(timedelta(seconds=int(seg["duration_s"]))),
+                "Avg Power (W)": f"{seg['avg_power']:.1f}",
+                "Distance (m)": f"{seg['distance_m']:.0f}",
+                "Pace (/km)": str(timedelta(seconds=int(seg["pace_per_km"]))) if seg["pace_per_km"] else "–",
+                "Running Effectiveness": f"{seg['RE']:.3f}" if seg["RE"] else "–"
+            }
+            for i, seg in enumerate(segments)
+        ])
+
+        st.subheader("Detected Segments")
+        st.dataframe(seg_df, use_container_width=True)
+
+        avg_re = np.nanmean([seg["RE"] for seg in segments if seg["RE"]])
+        show_result_card(
+            "Average Running Effectiveness",
+            f"{avg_re:.3f}",
+            "Typical values: 0.98 – 1.05 for most runners",
+            color="#16a34a"
         )
-
-    # Format for display
-    seg_df = pd.DataFrame([
-        {
-            "Segment #": i + 1,
-            "Duration": str(timedelta(seconds=int(seg["duration_s"]))),
-            "Avg Power (W)": f"{seg['avg_power']:.1f}",
-            "Distance (m)": f"{seg['distance_m']:.0f}",
-            "Pace (/km)": str(timedelta(seconds=int(seg["pace_per_km"]))) if seg["pace_per_km"] else "–",
-            "Running Effectiveness": f"{seg['RE']:.3f}" if seg["RE"] else "–"
-        }
-        for i, seg in enumerate(segments)
-    ])
-
-    st.subheader("Detected Segments")
-    st.dataframe(seg_df, use_container_width=True)
-
-    avg_re = np.nanmean([seg["RE"] for seg in segments if seg["RE"]])
-    show_result_card(
-        "Average Running Effectiveness",
-        f"{avg_re:.3f}",
-        "Typical values: 0.98 – 1.05 for most runners",
-        color="#16a34a"  # green accent
-    )
 
 st.markdown("---")
 render_documentation()
