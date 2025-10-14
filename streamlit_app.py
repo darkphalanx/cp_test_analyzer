@@ -300,12 +300,61 @@ if run_analysis:
             allowed_spike_sec=allowed_spike,
         )
 
-        if not segments:
+        def merge_adjacent_segments(segments, max_gap_sec=5, max_avg_diff_pct=0.02):
+            if not segments:
+                return segments, []
+            merged = []
+            combos = []  # to remember which were merged (indices)
+            current = segments[0].copy()
+            bucket = [0]
+
+            for idx in range(1, len(segments)):
+                s = segments[idx]
+                gap = s["start_elapsed"] - current["end_elapsed"]
+                avg_diff = abs(s["avg_power"] - current["avg_power"]) / max(current["avg_power"], 1e-6)
+
+                if gap <= max_gap_sec and avg_diff <= max_avg_diff_pct:
+                    # merge s into current
+                    total_dur = current["duration_s"] + gap + s["duration_s"]
+                    # duration-weighted average power
+                    w_avg = (
+                        current["avg_power"] * current["duration_s"] +
+                        s["avg_power"] * s["duration_s"]
+                    ) / total_dur
+
+                    current.update({
+                        "end_idx": s["end_idx"],
+                        "end_elapsed": s["end_elapsed"],
+                        "duration_s": total_dur,
+                        "avg_power": w_avg,
+                        "min_power": min(current["min_power"], s["min_power"]),
+                        "max_power": max(current["max_power"], s["max_power"]),
+                        "distance_m": current["distance_m"] + s["distance_m"],
+                        "pace_per_km": (current["pace_per_km"] + s["pace_per_km"]) / 2 if current["pace_per_km"] and s["pace_per_km"] else current["pace_per_km"] or s["pace_per_km"],
+                        "end_reason": "merged",
+                    })
+                    bucket.append(idx)
+                else:
+                    merged.append(current)
+                    combos.append(bucket)
+                    current = s.copy()
+                    bucket = [idx]
+
+            merged.append(current)
+            combos.append(bucket)
+            return merged, combos
+
+
+        segments_merged, merged_groups = merge_adjacent_segments(segments, max_gap_sec=5, max_avg_diff_pct=0.02)
+
+        segments_display = segments_merged  # show merged segments
+
+        if not segments_display:
             st.warning("No stable segments found with the current settings.")
             st.stop()
 
         # Compute Running Effectiveness for each segment (needs stryd_weight)
-        for seg in segments:
+        for seg in segments_display:
             seg["RE"] = running_effectiveness(
                 seg["distance_m"], seg["duration_s"], seg["avg_power"], stryd_weight
             )
@@ -327,8 +376,9 @@ if run_analysis:
                 "RE": f"{seg['RE']:.3f}" if seg["RE"] else "–",
                 "End Reason": seg.get("end_reason", "–"),
             }
-            for seg in segments
+            for seg in segments_display
         ])
+
 
         st.subheader("Detected Segments")
         st.dataframe(seg_df, width="stretch")
