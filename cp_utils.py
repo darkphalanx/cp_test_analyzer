@@ -276,7 +276,7 @@ def detect_stable_power_segments(
             duration = (j - i) / sampling_rate
             if duration >= min_duration_sec:
                 avg_power = power[i:j].mean()
-                avg_min_power, avg_max_power = average_min_max(power[start:end + 1], chunk_size=10, sampling_rate=sampling_rate)
+                avg_min_power, avg_max_power = average_min_max(power[i:j], chunk_size=10, sampling_rate=sampling_rate)
                 distance_m = dist[j - 1] - dist[i]
                 pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
                 elapsed_start = str(datetime.timedelta(seconds=int((times.iloc[i] - t0).total_seconds())))
