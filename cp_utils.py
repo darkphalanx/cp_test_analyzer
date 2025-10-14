@@ -505,9 +505,10 @@ def detect_stable_segments_rolling(
     max_std_ratio=0.05,
     smooth_window_sec=10,
     max_gap_sec=10,
-    max_gap_total_sec=30,  # <-- NEW cumulative instability limit
+    max_gap_total_sec=30,
     min_duration_sec=300,
     sampling_rate=1,
+    pause_threshold_w=5,  # treat power below this as a pause
 ):
     """
     Detect continuous low-variability (stable) segments using a rolling window.
@@ -516,7 +517,7 @@ def detect_stable_segments_rolling(
     A second is 'stable' if rolling_std / rolling_mean <= max_std_ratio.
     Continuous runs of stable seconds are combined into segments, allowing
     brief instability up to 'max_gap_sec' and total instability within
-    the segment up to 'max_gap_total_sec'.
+    the segment up to 'max_gap_total_sec'.  Short 0-W pauses are tolerated.
 
     Args:
         df: DataFrame with 'power', 'Watch Distance (meters)', 'timestamp'
@@ -526,6 +527,7 @@ def detect_stable_segments_rolling(
         max_gap_total_sec: total unstable seconds allowed inside a segment
         min_duration_sec: minimum segment duration
         sampling_rate: samples per second (default 1 Hz)
+        pause_threshold_w: power below this counts as a pause, not instability
     """
     import pandas as pd
     import numpy as np
@@ -536,6 +538,7 @@ def detect_stable_segments_rolling(
         if col not in df.columns:
             raise ValueError(f"Column '{col}' not found in DataFrame.")
 
+    # --- Rolling statistics
     window = int(smooth_window_sec * sampling_rate)
     roll_mean = df["power"].rolling(window=window, min_periods=1).mean()
     roll_std = df["power"].rolling(window=window, min_periods=1).std()
@@ -556,15 +559,22 @@ def detect_stable_segments_rolling(
     max_total_gap = int(max_gap_total_sec * sampling_rate)
 
     for i, val in enumerate(in_zone):
-        if val:  # stable
+        current_power = power[i]
+        is_pause = current_power < pause_threshold_w  # treat as pause if very low power
+
+        if val or is_pause:
+            # stable or low-power pause -> continue segment
             if start is None:
                 start = i
-            gap_count = 0
-        elif start is not None:  # unstable
+            # reset consecutive gap counter if back in zone or pause
+            if not is_pause:
+                gap_count = 0
+        elif start is not None:
+            # unstable sample
             gap_count += 1
             total_gap += 1
             if gap_count > max_gap or total_gap > max_total_gap:
-                # close segment
+                # close the current segment
                 end = i - gap_count
                 duration = (end - start + 1) / sampling_rate
                 if duration >= min_duration_sec:
@@ -590,6 +600,7 @@ def detect_stable_segments_rolling(
                         "pace_per_km": pace_per_km,
                         "cv_%": cv_pct,
                     })
+                # reset after closing
                 start = None
                 gap_count = 0
                 total_gap = 0
@@ -623,3 +634,4 @@ def detect_stable_segments_rolling(
             })
 
     return sorted(segments, key=lambda x: x["start_elapsed"])
+
