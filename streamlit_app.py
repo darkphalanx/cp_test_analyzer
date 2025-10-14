@@ -268,7 +268,12 @@ if run_analysis:
     # ==============================================================
     elif "Segment Analysis" in test_choice:
         if 'auto_mode' in locals() and auto_mode:
-            segments = detect_stable_power_segments(df, max_std_ratio=max_std, min_duration_sec=min_duration, smooth_window_sec=smooth_window)
+            segments = detect_stable_segments_rolling(
+                df,
+                max_std_ratio=max_std,
+                smooth_window_sec=smooth_window,
+                min_duration_sec=min_duration,
+            )
         else:
             segments = detect_target_segments_rolling(
             df,

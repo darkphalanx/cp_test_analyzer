@@ -500,3 +500,111 @@ def detect_target_segments_rolling(
     # Sort and return
     return sorted(segments, key=lambda x: x["start_elapsed"])
 
+def detect_stable_segments_rolling(
+    df,
+    max_std_ratio=0.05,
+    smooth_window_sec=10,
+    min_duration_sec=300,
+    sampling_rate=1,
+):
+    """
+    Detect continuous low-variability (stable) segments using a rolling window.
+
+    Each second, compute rolling mean and std over the last X seconds.
+    If rolling_std / rolling_mean <= max_std_ratio, that second is 'stable'.
+    Continuous runs of stable seconds are combined into segments.
+
+    Args:
+        df: DataFrame with 'power', 'Watch Distance (meters)', 'timestamp'
+        max_std_ratio: threshold for variability (e.g. 0.05 = 5 %)
+        smooth_window_sec: rolling window length in seconds
+        min_duration_sec: minimum segment duration (seconds)
+        sampling_rate: samples per second (default 1 Hz)
+    """
+    import pandas as pd
+    import numpy as np
+    import datetime
+
+    # --- Validate input
+    for col in ["power", "Watch Distance (meters)", "timestamp"]:
+        if col not in df.columns:
+            raise ValueError(f"Column '{col}' not found in DataFrame.")
+
+    # --- Rolling statistics
+    window = int(smooth_window_sec * sampling_rate)
+    roll_mean = df["power"].rolling(window=window, min_periods=1).mean()
+    roll_std = df["power"].rolling(window=window, min_periods=1).std()
+    stability = (roll_std / roll_mean).fillna(1)
+
+    # --- Identify stable seconds
+    in_zone = stability <= max_std_ratio
+
+    power = df["power"].to_numpy()
+    dist = pd.to_numeric(df["Watch Distance (meters)"], errors="coerce").ffill().to_numpy()
+    times = pd.to_datetime(df["timestamp"], errors="coerce").reset_index(drop=True)
+    t0 = times.iloc[0]
+
+    segments = []
+    start = None
+
+    for i, val in enumerate(in_zone):
+        if val:
+            if start is None:
+                start = i
+        elif start is not None:
+            end = i - 1
+            duration = (end - start + 1) / sampling_rate
+            if duration >= min_duration_sec:
+                seg_power = power[start:end + 1]
+                avg_power = np.mean(seg_power)
+                min_power = np.min(seg_power)
+                max_power = np.max(seg_power)
+                cv_pct = 100 * np.std(seg_power) / avg_power
+                distance_m = dist[end] - dist[start]
+                pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
+                start_elapsed = (times.iloc[start] - t0).total_seconds()
+                end_elapsed = (times.iloc[end] - t0).total_seconds()
+                segments.append({
+                    "start_idx": start,
+                    "end_idx": end,
+                    "start_elapsed": start_elapsed,
+                    "end_elapsed": end_elapsed,
+                    "duration_s": duration,
+                    "avg_power": avg_power,
+                    "min_power": min_power,
+                    "max_power": max_power,
+                    "distance_m": distance_m,
+                    "pace_per_km": pace_per_km,
+                    "cv_%": cv_pct,
+                })
+            start = None
+
+    # --- Handle trailing segment
+    if start is not None:
+        end = len(in_zone) - 1
+        duration = (end - start + 1) / sampling_rate
+        if duration >= min_duration_sec:
+            seg_power = power[start:end + 1]
+            avg_power = np.mean(seg_power)
+            min_power = np.min(seg_power)
+            max_power = np.max(seg_power)
+            cv_pct = 100 * np.std(seg_power) / avg_power
+            distance_m = dist[end] - dist[start]
+            pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
+            start_elapsed = (times.iloc[start] - t0).total_seconds()
+            end_elapsed = (times.iloc[end] - t0).total_seconds()
+            segments.append({
+                "start_idx": start,
+                "end_idx": end,
+                "start_elapsed": start_elapsed,
+                "end_elapsed": end_elapsed,
+                "duration_s": duration,
+                "avg_power": avg_power,
+                "min_power": min_power,
+                "max_power": max_power,
+                "distance_m": distance_m,
+                "pace_per_km": pace_per_km,
+                "cv_%": cv_pct,
+            })
+
+    return sorted(segments, key=lambda x: x["start_elapsed"])
