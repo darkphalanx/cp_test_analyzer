@@ -390,7 +390,7 @@ def prepare_power_series(df, sampling_rate=1, smooth_window_sec=5):
     return pd.to_numeric(df["smooth_power"], errors="coerce").to_numpy()
     
  #----------------------------------------------------------------
- def detect_target_segments_rolling(
+def detect_target_segments_rolling(
     df,
     target_power,
     tolerance=0.05,
