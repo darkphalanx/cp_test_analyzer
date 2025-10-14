@@ -505,6 +505,7 @@ def detect_stable_segments_rolling(
     max_std_ratio=0.05,
     smooth_window_sec=10,
     max_gap_sec=10,
+    max_gap_total_sec=30,  # <-- NEW cumulative instability limit
     min_duration_sec=300,
     sampling_rate=1,
 ):
@@ -512,16 +513,18 @@ def detect_stable_segments_rolling(
     Detect continuous low-variability (stable) segments using a rolling window.
 
     Each second, compute rolling mean and std over the last X seconds.
-    If rolling_std / rolling_mean <= max_std_ratio, that second is 'stable'.
-    Continuous runs of stable seconds (allowing brief instability ≤ max_gap_sec)
-    are combined into segments.
+    A second is 'stable' if rolling_std / rolling_mean <= max_std_ratio.
+    Continuous runs of stable seconds are combined into segments, allowing
+    brief instability up to 'max_gap_sec' and total instability within
+    the segment up to 'max_gap_total_sec'.
 
     Args:
         df: DataFrame with 'power', 'Watch Distance (meters)', 'timestamp'
-        max_std_ratio: threshold for variability (e.g. 0.05 = 5 %)
-        smooth_window_sec: rolling window length in seconds
-        max_gap_sec: how long instability is tolerated before closing a segment
-        min_duration_sec: minimum segment duration (seconds)
+        max_std_ratio: variability threshold (e.g. 0.05 = 5 %)
+        smooth_window_sec: rolling window for mean/std
+        max_gap_sec: max consecutive unstable seconds allowed
+        max_gap_total_sec: total unstable seconds allowed inside a segment
+        min_duration_sec: minimum segment duration
         sampling_rate: samples per second (default 1 Hz)
     """
     import pandas as pd
@@ -548,16 +551,20 @@ def detect_stable_segments_rolling(
     segments = []
     start = None
     gap_count = 0
+    total_gap = 0
     max_gap = int(max_gap_sec * sampling_rate)
+    max_total_gap = int(max_gap_total_sec * sampling_rate)
 
     for i, val in enumerate(in_zone):
-        if val:
+        if val:  # stable
             if start is None:
                 start = i
             gap_count = 0
-        elif start is not None:
+        elif start is not None:  # unstable
             gap_count += 1
-            if gap_count > max_gap:
+            total_gap += 1
+            if gap_count > max_gap or total_gap > max_total_gap:
+                # close segment
                 end = i - gap_count
                 duration = (end - start + 1) / sampling_rate
                 if duration >= min_duration_sec:
@@ -585,6 +592,7 @@ def detect_stable_segments_rolling(
                     })
                 start = None
                 gap_count = 0
+                total_gap = 0
 
     # --- Handle trailing segment
     if start is not None:
