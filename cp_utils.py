@@ -131,6 +131,9 @@ def compute_cp_5k_range(p):
 
 # ---------- Segment Detection & Running Effectiveness ---------- #
 
+# ============================================================
+#  Manual (target/tolerance-based) detection
+# ============================================================
 def detect_segments(
     df,
     target_power,
@@ -138,45 +141,20 @@ def detect_segments(
     min_duration_sec=300,
     sampling_rate=1,
     max_gap_sec=5,
-    smooth_window_sec=7,
+    smooth_window_sec=5,
 ):
-    """
-    Detect continuous segments where average power stays within ±tolerance of target_power,
-    allowing brief gaps (max_gap_sec) and applying optional smoothing.
-
-    Args:
-        df: DataFrame with 'power', 'Watch Distance (meters)', and 'timestamp' columns.
-        target_power: Target wattage.
-        tolerance: ± fraction (e.g., 0.05 = 5 %).
-        min_duration_sec: Minimum segment duration in seconds.
-        sampling_rate: Samples per second (default 1 Hz).
-        max_gap_sec: Seconds allowed outside range before breaking a segment.
-        smooth_window_sec: Rolling-average smoothing window (seconds).
-    """
-    import pandas as pd
-    import datetime
-
-    # --- Validate columns
+    # --- Column checks
     for col in ["power", "Watch Distance (meters)", "timestamp"]:
         if col not in df.columns:
             raise ValueError(f"Column '{col}' not found in DataFrame.")
 
-    # --- Rolling-average smoothing to reduce second-to-second spikes
-    window = int(smooth_window_sec * sampling_rate)
-    df["smooth_power"] = (
-        df["power"]
-        .rolling(window=window, center=True, min_periods=1)
-        .mean()
-    )
-
     # --- Adaptive tolerance scaling
-    # Loosen tolerance for long steady runs (>15 min)
-    if min_duration_sec >= 1800:       # >30 min
+    if min_duration_sec >= 1800:
         tolerance *= 1.5
-    elif min_duration_sec >= 900:      # 15–30 min
+    elif min_duration_sec >= 900:
         tolerance *= 1.2
 
-    power = pd.to_numeric(df["smooth_power"], errors="coerce").to_numpy()
+    power = prepare_power_series(df, sampling_rate, smooth_window_sec)
     dist = pd.to_numeric(df["Watch Distance (meters)"], errors="coerce").ffill().to_numpy()
     times = pd.to_datetime(df["timestamp"], errors="coerce").reset_index(drop=True)
     t0 = times.iloc[0]
@@ -202,87 +180,81 @@ def detect_segments(
                 duration = (end - start + 1) / sampling_rate
                 if duration >= min_duration_sec:
                     avg_power = power[start:end + 1].mean()
-                    avg_min_power, avg_max_power = average_min_max(
-                        power[start:end + 1], chunk_size=10, sampling_rate=sampling_rate
-                    )
+                    avg_min_power, avg_max_power = average_min_max(power[start:end + 1], 10, sampling_rate)
+                    cv_pct = 100 * np.std(power[start:end + 1]) / avg_power
                     distance_m = dist[end] - dist[start]
                     pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
-                    elapsed_start = str(datetime.timedelta(seconds=int((times.iloc[start] - t0).total_seconds())))
-                    elapsed_end = str(datetime.timedelta(seconds=int((times.iloc[end] - t0).total_seconds())))
+                    start_elapsed = (times.iloc[start] - t0).total_seconds()
+                    end_elapsed = (times.iloc[end] - t0).total_seconds()
                     segments.append({
                         "start_idx": start,
                         "end_idx": end,
-                        "elapsed_start": elapsed_start,
-                        "elapsed_end": elapsed_end,
+                        "start_elapsed": start_elapsed,
+                        "end_elapsed": end_elapsed,
                         "duration_s": duration,
                         "avg_power": avg_power,
                         "min_power": avg_min_power,
                         "max_power": avg_max_power,
                         "distance_m": distance_m,
-                        "pace_per_km": pace_per_km
+                        "pace_per_km": pace_per_km,
+                        "cv_%": cv_pct,
                     })
                 start = None
                 gap_count = 0
 
-    # --- Handle segment that continues to end
+    # --- Tail segment
     if start is not None:
         end = len(in_zone) - 1
         duration = (end - start + 1) / sampling_rate
         if duration >= min_duration_sec:
             avg_power = power[start:end + 1].mean()
-            avg_min_power, avg_max_power = average_min_max(
-                power[start:end + 1], chunk_size=10, sampling_rate=sampling_rate
-            )
+            avg_min_power, avg_max_power = average_min_max(power[start:end + 1], 10, sampling_rate)
+            cv_pct = 100 * np.std(power[start:end + 1]) / avg_power
             distance_m = dist[end] - dist[start]
             pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
-            elapsed_start = str(datetime.timedelta(seconds=int((times.iloc[start] - t0).total_seconds())))
-            elapsed_end = str(datetime.timedelta(seconds=int((times.iloc[end] - t0).total_seconds())))
+            start_elapsed = (times.iloc[start] - t0).total_seconds()
+            end_elapsed = (times.iloc[end] - t0).total_seconds()
             segments.append({
                 "start_idx": start,
                 "end_idx": end,
-                "elapsed_start": elapsed_start,
-                "elapsed_end": elapsed_end,
+                "start_elapsed": start_elapsed,
+                "end_elapsed": end_elapsed,
                 "duration_s": duration,
                 "avg_power": avg_power,
                 "min_power": avg_min_power,
                 "max_power": avg_max_power,
                 "distance_m": distance_m,
-                "pace_per_km": pace_per_km
+                "pace_per_km": pace_per_km,
+                "cv_%": cv_pct,
             })
 
-    return sorted(segments, key=lambda x: x["elapsed_start"])
+    # --- Merge similar segments
+    return merge_similar_segments(sorted(segments, key=lambda x: x["start_elapsed"]))
 
 
+# ============================================================
+#  Auto (stability-based) detection
+# ============================================================
 def detect_stable_power_segments(
     df,
     max_std_ratio=0.05,
     min_duration_sec=300,
     sampling_rate=1,
     max_gap_sec=5,
-    smooth_window_sec=7,
+    smooth_window_sec=5,
 ):
-    """
-    Automatically detect steady-state power segments based on low variability.
-    Applies rolling smoothing before variability checks and allows brief gaps.
-    """
-    import pandas as pd
-    import numpy as np
-    import datetime
-
-    # --- Validate required columns
     for col in ["power", "Watch Distance (meters)", "timestamp"]:
         if col not in df.columns:
             raise ValueError(f"Column '{col}' not found in DataFrame.")
 
-    # --- Rolling-average smoothing to reduce micro-fluctuations
-    window = int(smooth_window_sec * sampling_rate)
-    df["smooth_power"] = (
-        df["power"]
-        .rolling(window=window, center=True, min_periods=1)
-        .mean()
-    )
+    # --- Adaptive std-ratio scaling
+    global_std_ratio = df["power"].std() / df["power"].mean()
+    if global_std_ratio < 0.08:
+        max_std_ratio = min(max_std_ratio, 0.06)
+    else:
+        max_std_ratio = max(max_std_ratio, 0.07)
 
-    power = pd.to_numeric(df["smooth_power"], errors="coerce").to_numpy()
+    power = prepare_power_series(df, sampling_rate, smooth_window_sec)
     dist = pd.to_numeric(df["Watch Distance (meters)"], errors="coerce").ffill().to_numpy()
     times = pd.to_datetime(df["timestamp"], errors="coerce").reset_index(drop=True)
     t0 = times.iloc[0]
@@ -290,15 +262,14 @@ def detect_stable_power_segments(
     window_len = int(min_duration_sec * sampling_rate)
     max_gap = int(max_gap_sec * sampling_rate)
     n = len(df)
-
     segments = []
     i = 0
+
     while i + window_len < n:
         segment = power[i:i + window_len]
         mean_p = segment.mean()
         std_p = segment.std()
 
-        # Segment qualifies if variability is low
         if mean_p > 0 and (std_p / mean_p) <= max_std_ratio:
             j = i + window_len
             gap_count = 0
@@ -318,31 +289,63 @@ def detect_stable_power_segments(
             duration = (j - i) / sampling_rate
             if duration >= min_duration_sec:
                 avg_power = power[i:j].mean()
-                avg_min_power, avg_max_power = average_min_max(
-                    power[i:j], chunk_size=10, sampling_rate=sampling_rate
-                )
+                avg_min_power, avg_max_power = average_min_max(power[i:j], 10, sampling_rate)
+                cv_pct = 100 * np.std(power[i:j]) / avg_power
                 distance_m = dist[j - 1] - dist[i]
                 pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
-                elapsed_start = str(datetime.timedelta(seconds=int((times.iloc[i] - t0).total_seconds())))
-                elapsed_end = str(datetime.timedelta(seconds=int((times.iloc[j - 1] - t0).total_seconds())))
+                start_elapsed = (times.iloc[i] - t0).total_seconds()
+                end_elapsed = (times.iloc[j - 1] - t0).total_seconds()
                 segments.append({
                     "start_idx": i,
                     "end_idx": j,
-                    "elapsed_start": elapsed_start,
-                    "elapsed_end": elapsed_end,
+                    "start_elapsed": start_elapsed,
+                    "end_elapsed": end_elapsed,
                     "duration_s": duration,
                     "avg_power": avg_power,
                     "min_power": avg_min_power,
                     "max_power": avg_max_power,
                     "distance_m": distance_m,
-                    "pace_per_km": pace_per_km
+                    "pace_per_km": pace_per_km,
+                    "cv_%": cv_pct,
                 })
             i = j
         else:
             i += window_len // 2
 
-    return sorted(segments, key=lambda x: x["elapsed_start"])
+    return merge_similar_segments(sorted(segments, key=lambda x: x["start_elapsed"]))
 
+# ============================================================
+#  Utility: merge consecutive similar segments
+# ============================================================
+def merge_similar_segments(segments, merge_gap_sec=90, merge_diff_pct=0.03):
+    if not segments:
+        return segments
+
+    merged = [segments[0]]
+    for seg in segments[1:]:
+        prev = merged[-1]
+        gap = seg["start_elapsed"] - prev["end_elapsed"]
+        power_diff = abs(seg["avg_power"] - prev["avg_power"]) / prev["avg_power"]
+
+        if gap <= merge_gap_sec and power_diff <= merge_diff_pct:
+            combined = {
+                **prev,
+                "end_idx": seg["end_idx"],
+                "end_elapsed": seg["end_elapsed"],
+                "duration_s": prev["duration_s"] + gap + seg["duration_s"],
+                "avg_power": np.mean([prev["avg_power"], seg["avg_power"]]),
+                "min_power": min(prev["min_power"], seg["min_power"]),
+                "max_power": max(prev["max_power"], seg["max_power"]),
+                "distance_m": prev["distance_m"] + seg["distance_m"],
+                "pace_per_km": (prev["pace_per_km"] + seg["pace_per_km"]) / 2,
+                "cv_%": np.mean([prev["cv_%"], seg["cv_%"]]),
+            }
+            merged[-1] = combined
+        else:
+            merged.append(seg)
+
+    return merged
+  
 
 def running_effectiveness(distance_m, duration_s, power_w, weight_kg):
     """
@@ -359,19 +362,10 @@ def running_effectiveness(distance_m, duration_s, power_w, weight_kg):
     velocity = distance_m / duration_s  # m/s
     return (velocity * weight_kg) / power_w
 
+# ============================================================
+#  Utility: average of minima and maxima over time chunks
+# ============================================================
 def average_min_max(power_array, chunk_size=10, sampling_rate=1):
-    """
-    Compute average of minimums and maximums over fixed-duration chunks.
-
-    Args:
-        power_array: np.array of power values.
-        chunk_size: size of each chunk in seconds.
-        sampling_rate: samples per second.
-    Returns:
-        (avg_min, avg_max)
-    """
-    import numpy as np
-
     samples_per_chunk = int(chunk_size * sampling_rate)
     n = len(power_array)
     mins, maxs = [], []
@@ -382,3 +376,15 @@ def average_min_max(power_array, chunk_size=10, sampling_rate=1):
         mins.append(np.min(chunk))
         maxs.append(np.max(chunk))
     return (np.mean(mins), np.mean(maxs))
+
+# ============================================================
+#  Shared pre-processing (used by both detectors)
+# ============================================================
+def prepare_power_series(df, sampling_rate=1, smooth_window_sec=5):
+    window = int(smooth_window_sec * sampling_rate)
+    df["smooth_power"] = (
+        df["power"]
+        .rolling(window=window, center=True, min_periods=1)
+        .mean()
+    )
+    return pd.to_numeric(df["smooth_power"], errors="coerce").to_numpy()
