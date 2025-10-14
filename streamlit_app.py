@@ -3,7 +3,7 @@ import pandas as pd
 from cp_utils import (
     load_csv_auto, best_avg_power, best_power_for_distance,
     extend_best_segment, compute_cp_linear, compute_cp_5k_range,
-    detect_segments, running_effectiveness, detect_stable_power_segments, detect_target_segments_rolling
+    detect_segments, running_effectiveness, detect_stable_power_segments, detect_target_segments_rolling, detect_stable_segments_rolling
 )
 
 from datetime import timedelta
