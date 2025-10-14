@@ -284,7 +284,7 @@ if run_analysis:
         ])
 
         st.subheader("Detected Segments")
-        st.dataframe(seg_df, use_container_width=True)
+        st.dataframe(seg_df, width="stretch")
 
         avg_re = np.nanmean([seg["RE"] for seg in segments if seg["RE"]])
         show_result_card(
