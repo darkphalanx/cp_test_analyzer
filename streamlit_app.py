@@ -91,6 +91,7 @@ with st.sidebar:
         if auto_mode:
             max_std = st.slider("Max Power Variability (%)", 1, 10, 5) / 100
             min_duration = st.number_input("⏱️ Minimum Duration (minutes)", 3, 60, 10) * 60
+            smooth_window = st.slider("Smoothing window (sec)", 1, 10, 5)
         else:
             target_power = st.number_input("🎯 Target Power (W)", 100.0, 600.0, step=1.0)
             tolerance = st.slider("± Power Tolerance (%)", 1, 10, 5) / 100
@@ -267,7 +268,7 @@ if run_analysis:
     # ==============================================================
     elif "Segment Analysis" in test_choice:
         if 'auto_mode' in locals() and auto_mode:
-            segments = detect_stable_power_segments(df, max_std_ratio=max_std, min_duration_sec=min_duration)
+            segments = detect_stable_power_segments(df, max_std_ratio=max_std, min_duration_sec=min_duration, smooth_window_sec=smooth_window)
         else:
             segments = detect_segments(df, target_power=target_power, tolerance=tolerance, min_duration_sec=min_duration)
 

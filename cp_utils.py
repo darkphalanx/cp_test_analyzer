@@ -259,43 +259,48 @@ def detect_stable_power_segments(
     min_duration_sec=300,
     sampling_rate=1,
     max_gap_sec=5,
+    smooth_window_sec=7,
 ):
     """
     Automatically detect steady-state power segments based on low variability.
-    Allows brief (max_gap_sec) instability periods before ending a segment.
-
-    Args:
-        df: DataFrame containing 'power', 'Watch Distance (meters)', and 'timestamp'.
-        max_std_ratio: Maximum allowed ratio (std / mean) within a window (default 5%).
-        min_duration_sec: Minimum segment duration (seconds).
-        sampling_rate: Samples per second (default 1 Hz).
-        max_gap_sec: How many seconds of instability are tolerated (default = 5 s).
+    Applies rolling smoothing before variability checks and allows brief gaps.
     """
     import pandas as pd
     import numpy as np
     import datetime
 
+    # --- Validate required columns
     for col in ["power", "Watch Distance (meters)", "timestamp"]:
         if col not in df.columns:
             raise ValueError(f"Column '{col}' not found in DataFrame.")
 
-    power = pd.to_numeric(df["power"], errors="coerce").to_numpy()
+    # --- Rolling-average smoothing to reduce micro-fluctuations
+    window = int(smooth_window_sec * sampling_rate)
+    df["smooth_power"] = (
+        df["power"]
+        .rolling(window=window, center=True, min_periods=1)
+        .mean()
+    )
+
+    power = pd.to_numeric(df["smooth_power"], errors="coerce").to_numpy()
     dist = pd.to_numeric(df["Watch Distance (meters)"], errors="coerce").ffill().to_numpy()
     times = pd.to_datetime(df["timestamp"], errors="coerce").reset_index(drop=True)
     t0 = times.iloc[0]
 
-    window = int(min_duration_sec * sampling_rate)
+    window_len = int(min_duration_sec * sampling_rate)
     max_gap = int(max_gap_sec * sampling_rate)
     n = len(df)
 
     segments = []
     i = 0
-    while i + window < n:
-        segment = power[i:i + window]
+    while i + window_len < n:
+        segment = power[i:i + window_len]
         mean_p = segment.mean()
         std_p = segment.std()
+
+        # Segment qualifies if variability is low
         if mean_p > 0 and (std_p / mean_p) <= max_std_ratio:
-            j = i + window
+            j = i + window_len
             gap_count = 0
             while j < n:
                 ext_segment = power[i:j]
@@ -309,10 +314,13 @@ def detect_stable_power_segments(
                     if gap_count > max_gap:
                         break
                     j += 1
+
             duration = (j - i) / sampling_rate
             if duration >= min_duration_sec:
                 avg_power = power[i:j].mean()
-                avg_min_power, avg_max_power = average_min_max(power[i:j], chunk_size=10, sampling_rate=sampling_rate)
+                avg_min_power, avg_max_power = average_min_max(
+                    power[i:j], chunk_size=10, sampling_rate=sampling_rate
+                )
                 distance_m = dist[j - 1] - dist[i]
                 pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
                 elapsed_start = str(datetime.timedelta(seconds=int((times.iloc[i] - t0).total_seconds())))
@@ -331,7 +339,7 @@ def detect_stable_power_segments(
                 })
             i = j
         else:
-            i += window // 2
+            i += window_len // 2
 
     return sorted(segments, key=lambda x: x["elapsed_start"])
 
