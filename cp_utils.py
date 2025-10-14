@@ -527,25 +527,35 @@ def detect_stable_segments_rolling(
     roll_std  = df["power"].rolling(window=window, min_periods=1).std()
     stability_ok = (roll_std / roll_mean).fillna(0) <= max_std_ratio
 
-    # Optional: diagnostics (kept simple and parameter-safe)
+    # --- Diagnostics (safe & parameterized) ---
+    # Treat near-zero mean as unstable to avoid inflating stability during stops.
     import numpy as np
     eps = 1e-6
     safe_mean = roll_mean.where(roll_mean.abs() > eps, np.nan)
     stability = (roll_std / safe_mean).replace([np.inf, -np.inf], np.nan).fillna(1.0)
     stable_mask = (stability <= max_std_ratio)
 
-    # longest consecutive stable run (in samples)
-    if len(stable_mask) > 0:
-        changes = np.where(
-            np.concatenate(([True], stable_mask.values[1:] != stable_mask.values[:-1], [True]))
-        )[0]
-        run_lengths = changes[1::2] - changes[::2]
-        longest_streak_sec = int(run_lengths[stable_mask.values[changes[::2]]].max()) if run_lengths.size else 0
+    # Longest consecutive True run, robust for all edge cases
+    vals = stable_mask.values.astype(np.uint8)
+    if vals.size:
+        # positions where value changes
+        change_pos = np.where(np.diff(vals) != 0)[0] + 1
+        # segment boundaries
+        boundaries = np.concatenate(([0], change_pos, [len(vals)]))
+        # lengths per run
+        lengths = np.diff(boundaries)
+        # state for each run (0/1)
+        states = vals[boundaries[:-1]]
+        # longest True run (in samples)
+        longest_true_samples = lengths[states == 1].max() if np.any(states == 1) else 0
     else:
-        longest_streak_sec = 0
+        longest_true_samples = 0
 
-    # Show caption only if Streamlit is available
+    longest_streak_sec = int(longest_true_samples // 1)  # sampling_rate is 1 Hz here
+
+    # Display only when Streamlit is present
     try:
+        import streamlit as st
         st.caption(
             f"Stability diagnostics — {100*stable_mask.mean():.1f}% ≤ {int(max_std_ratio*100)}% variability; "
             f"longest continuous stable streak: {longest_streak_sec}s with smoothing {int(smooth_window_sec)}s."
