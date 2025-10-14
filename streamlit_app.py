@@ -325,13 +325,6 @@ if run_analysis:
         st.caption(f"Total stable time detected: **{total_time_fmt}** across {len(segments)} segments.")
         st.dataframe(seg_df, width="stretch")
 
-        show_result_card(
-            "Average Running Effectiveness",
-            f"{avg_re:.3f}",
-            "Typical values: 0.98 – 1.05 for most runners",
-            color="#16a34a"
-        )
-
 
 st.markdown("---")
 render_documentation()
