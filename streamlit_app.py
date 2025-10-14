@@ -107,44 +107,11 @@ with st.sidebar:
     # --- Segment Analysis Section ---
     with st.expander("📊 Segment Detection", expanded=(test_choice == "Segment Analysis")):
         if test_choice == "Segment Analysis":
-            sensitivity = st.radio(
-                "Detection Sensitivity",
-                ["Low", "Medium", "High"],
-                index=1,
-                help="Controls how easily segments split — higher = more sensitive to effort changes.",
-            )
-            min_duration = st.number_input("⏱️ Minimum Duration (minutes)", 3, 60, 5) * 60
-
-            # --- Presets based on sensitivity ---
-            if sensitivity == "Low":
-                smooth_window, max_std, max_pause, total_tolerance = 8, 0.06, 15, 60
-            elif sensitivity == "High":
-                smooth_window, max_std, max_pause, total_tolerance = 4, 0.035, 5, 30
-            else:  # Medium
-                smooth_window, max_std, max_pause, total_tolerance = 6, 0.045, 8, 45
-
-            # --- Advanced options (optional override) ---
-            with st.expander("⚙️ Advanced Pause & Variability Settings", expanded=False):
-                smooth_window = st.slider(
-                    "📈 Smoothing Window (sec)",
-                    1, 15, smooth_window,
-                    help="Rolling average window for power stability calculation."
-                )
-                max_std = st.slider(
-                    "📊 Power Variability Threshold (%)",
-                    2, 10, int(max_std * 100),
-                    help="How strict the stability check is (lower = more sensitive)."
-                ) / 100
-                max_pause = st.slider(
-                    "🕐 Max Pause Duration (sec)",
-                    0, 60, max_pause,
-                    help="Longest continuous stop or fluctuation allowed before ending a segment."
-                )
-                total_tolerance = st.slider(
-                    "🔁 Total Pause/Instability Tolerance (sec)",
-                    0, 120, total_tolerance,
-                    help="Total instability or stop time tolerated inside one segment."
-                )
+            smooth_window   = st.slider("📈 Smoothing Window (sec)", 1, 15, 6)
+            max_std         = st.slider("📊 Power Variability Threshold (%)", 2, 10, 5) / 100
+            allowed_spike   = st.slider("⚠️ Allowed Spike Duration (sec)", 0, 30, 5,
+                                        help="Max consecutive seconds outside stability before a segment ends.")
+            min_duration    = st.number_input("⏱️ Minimum Duration (minutes)", 3, 60, 5) * 60
 
 
     st.markdown("---")
@@ -315,11 +282,9 @@ if run_analysis:
             df,
             max_std_ratio=max_std,
             smooth_window_sec=smooth_window,
-            max_gap_sec=max_pause,
-            max_gap_total_sec=total_tolerance,
+            allowed_spike_sec=allowed_spike,
             min_duration_sec=min_duration,
         )
-
 
         if not segments:
             st.warning("No stable power segments found within the specified range and duration.")
@@ -340,14 +305,13 @@ if run_analysis:
                 "Min Power (W)": f"{seg['min_power']:.1f}",
                 "Avg Power (W)": f"{seg['avg_power']:.1f}",
                 "Max Power (W)": f"{seg['max_power']:.1f}",
-                "CV %": f"{seg['cv_%']:.2f}",
+                "CV %": f"{seg['cv_%']:.2f}" if seg.get("cv_%") is not None else "–",
                 "Distance (m)": f"{seg['distance_m']:.0f}",
                 "Pace (/km)": (
                     str(timedelta(seconds=int(seg["pace_per_km"])))
-                    if seg["pace_per_km"]
-                    else "–"
+                    if seg["pace_per_km"] else "–"
                 ),
-                "Running Effectiveness": f"{seg['RE']:.3f}" if seg["RE"] else "–",
+                "End Reason": seg.get("end_reason", "–"),   # 👈 NEW
             }
             for seg in segments
         ])

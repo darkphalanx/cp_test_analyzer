@@ -503,134 +503,147 @@ def detect_target_segments_rolling(
 def detect_stable_segments_rolling(
     df,
     max_std_ratio=0.05,
-    smooth_window_sec=10,
-    max_gap_sec=10,
-    max_gap_total_sec=30,
+    smooth_window_sec=6,
+    allowed_spike_sec=5,     # max consecutive seconds outside variability
     min_duration_sec=300,
     sampling_rate=1,
-    pause_threshold_w=5,  # treat power below this as a pause
+    pause_threshold_w=5,     # stops (<5 W) end segment immediately
 ):
     """
-    Detect continuous low-variability (stable) segments using a rolling window.
-
-    Each second, compute rolling mean and std over the last X seconds.
-    A second is 'stable' if rolling_std / rolling_mean <= max_std_ratio.
-    Continuous runs of stable seconds are combined into segments, allowing
-    brief instability up to 'max_gap_sec' and total instability within
-    the segment up to 'max_gap_total_sec'.  Short 0-W pauses are tolerated.
-
-    Args:
-        df: DataFrame with 'power', 'Watch Distance (meters)', 'timestamp'
-        max_std_ratio: variability threshold (e.g. 0.05 = 5 %)
-        smooth_window_sec: rolling window for mean/std
-        max_gap_sec: max consecutive unstable seconds allowed
-        max_gap_total_sec: total unstable seconds allowed inside a segment
-        min_duration_sec: minimum segment duration
-        sampling_rate: samples per second (default 1 Hz)
-        pause_threshold_w: power below this counts as a pause, not instability
+    Detect low-variability (stable) segments using a rolling window.
+    - Stability: rolling_std / rolling_mean <= max_std_ratio
+    - Allowed spikes: up to 'allowed_spike_sec' consecutive unstable samples
+    - Stops: power < pause_threshold_w ends segment immediately (separate segment)
+    - Adds 'end_reason' to each segment ("stop/pause ~Xs", "spike > Xs", "end of file")
     """
-    import pandas as pd
-    import numpy as np
-    import datetime
+    import pandas as pd, numpy as np, datetime
 
-    # --- Validate input
+    # Validate
     for col in ["power", "Watch Distance (meters)", "timestamp"]:
         if col not in df.columns:
             raise ValueError(f"Column '{col}' not found in DataFrame.")
 
-    # --- Rolling statistics
     window = int(smooth_window_sec * sampling_rate)
     roll_mean = df["power"].rolling(window=window, min_periods=1).mean()
-    roll_std = df["power"].rolling(window=window, min_periods=1).std()
-    stability = (roll_std / roll_mean).fillna(1)
+    roll_std  = df["power"].rolling(window=window, min_periods=1).std()
+    stability_ok = (roll_std / roll_mean).fillna(0) <= max_std_ratio
 
-    in_zone = stability <= max_std_ratio
-
-    power = df["power"].to_numpy()
-    dist = pd.to_numeric(df["Watch Distance (meters)"], errors="coerce").ffill().to_numpy()
-    times = pd.to_datetime(df["timestamp"], errors="coerce").reset_index(drop=True)
+    smooth_power = roll_mean.to_numpy()
+    raw_power    = pd.to_numeric(df["power"], errors="coerce").to_numpy()
+    dist         = pd.to_numeric(df["Watch Distance (meters)"], errors="coerce").ffill().to_numpy()
+    times        = pd.to_datetime(df["timestamp"], errors="coerce").reset_index(drop=True)
     t0 = times.iloc[0]
 
     segments = []
     start = None
-    gap_count = 0
-    total_gap = 0
-    max_gap = int(max_gap_sec * sampling_rate)
-    max_total_gap = int(max_gap_total_sec * sampling_rate)
+    spike_count = 0
+    spike_limit = int(allowed_spike_sec * sampling_rate)
 
-    for i, val in enumerate(in_zone):
-        current_power = power[i]
-        is_pause = current_power < pause_threshold_w  # treat as pause if very low power
+    n = len(df)
+    for i in range(n):
+        # If this is a stop, end current segment immediately
+        if raw_power[i] < pause_threshold_w:
+            # estimate pause length (peek ahead, does not change iteration)
+            k = i
+            while k < n and raw_power[k] < pause_threshold_w:
+                k += 1
+            pause_len_sec = (k - i) / sampling_rate
 
-        if val or is_pause:
-            # stable or low-power pause -> continue segment
-            if start is None:
-                start = i
-            # reset consecutive gap counter if back in zone or pause
-            if not is_pause:
-                gap_count = 0
-        elif start is not None:
-            # unstable sample
-            gap_count += 1
-            total_gap += 1
-            if gap_count > max_gap or total_gap > max_total_gap:
-                # close the current segment
-                end = i - gap_count
+            if start is not None:
+                end = i - 1
+                end = max(end - spike_count, start)  # drop trailing spikes
                 duration = (end - start + 1) / sampling_rate
                 if duration >= min_duration_sec:
-                    seg_power = power[start:end + 1]
-                    avg_power = np.mean(seg_power)
-                    min_power = np.min(seg_power)
-                    max_power = np.max(seg_power)
-                    cv_pct = 100 * np.std(seg_power) / avg_power
-                    distance_m = dist[end] - dist[start]
+                    seg_pow = smooth_power[start:end+1]
+                    avg_p = float(np.mean(seg_pow))
+                    min_p = float(np.min(seg_pow))
+                    max_p = float(np.max(seg_pow))
+                    cv_pct = float(100 * np.std(seg_pow) / avg_p) if avg_p > 0 else None
+                    distance_m = float(dist[end] - dist[start])
                     pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
-                    start_elapsed = (times.iloc[start] - t0).total_seconds()
-                    end_elapsed = (times.iloc[end] - t0).total_seconds()
                     segments.append({
                         "start_idx": start,
                         "end_idx": end,
-                        "start_elapsed": start_elapsed,
-                        "end_elapsed": end_elapsed,
+                        "start_elapsed": (times.iloc[start] - t0).total_seconds(),
+                        "end_elapsed": (times.iloc[end] - t0).total_seconds(),
                         "duration_s": duration,
-                        "avg_power": avg_power,
-                        "min_power": min_power,
-                        "max_power": max_power,
+                        "avg_power": avg_p,
+                        "min_power": min_p,
+                        "max_power": max_p,
                         "distance_m": distance_m,
                         "pace_per_km": pace_per_km,
                         "cv_%": cv_pct,
+                        "end_reason": f"stop/pause ~{int(round(pause_len_sec))}s",
                     })
-                # reset after closing
-                start = None
-                gap_count = 0
-                total_gap = 0
+            # reset state; stop creates a hard split
+            start = None
+            spike_count = 0
+            continue
 
-    # --- Handle trailing segment
+        # Not a stop; evaluate stability
+        if stability_ok.iloc[i]:
+            if start is None:
+                start = i
+            spike_count = 0
+        else:
+            # spike (unstable second)
+            if start is not None:
+                spike_count += 1
+                if spike_count > spike_limit:
+                    end = i - spike_count  # last stable index
+                    duration = (end - start + 1) / sampling_rate
+                    if duration >= min_duration_sec:
+                        seg_pow = smooth_power[start:end+1]
+                        avg_p = float(np.mean(seg_pow))
+                        min_p = float(np.min(seg_pow))
+                        max_p = float(np.max(seg_pow))
+                        cv_pct = float(100 * np.std(seg_pow) / avg_p) if avg_p > 0 else None
+                        distance_m = float(dist[end] - dist[start])
+                        pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
+                        segments.append({
+                            "start_idx": start,
+                            "end_idx": end,
+                            "start_elapsed": (times.iloc[start] - t0).total_seconds(),
+                            "end_elapsed": (times.iloc[end] - t0).total_seconds(),
+                            "duration_s": duration,
+                            "avg_power": avg_p,
+                            "min_power": min_p,
+                            "max_power": max_p,
+                            "distance_m": distance_m,
+                            "pace_per_km": pace_per_km,
+                            "cv_%": cv_pct,
+                            "end_reason": f"instability spike > {allowed_spike_sec}s",
+                        })
+                    start = None
+                    spike_count = 0
+            # else: not in a segment yet; wait for stability to start
+
+    # Trailing segment (if we ended inside a segment)
     if start is not None:
-        end = len(in_zone) - 1
+        end = n - 1 - spike_count  # drop trailing spikes
+        end = max(end, start)
         duration = (end - start + 1) / sampling_rate
         if duration >= min_duration_sec:
-            seg_power = power[start:end + 1]
-            avg_power = np.mean(seg_power)
-            min_power = np.min(seg_power)
-            max_power = np.max(seg_power)
-            cv_pct = 100 * np.std(seg_power) / avg_power
-            distance_m = dist[end] - dist[start]
+            seg_pow = smooth_power[start:end+1]
+            avg_p = float(np.mean(seg_pow))
+            min_p = float(np.min(seg_pow))
+            max_p = float(np.max(seg_pow))
+            cv_pct = float(100 * np.std(seg_pow) / avg_p) if avg_p > 0 else None
+            distance_m = float(dist[end] - dist[start])
             pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
-            start_elapsed = (times.iloc[start] - t0).total_seconds()
-            end_elapsed = (times.iloc[end] - t0).total_seconds()
             segments.append({
                 "start_idx": start,
                 "end_idx": end,
-                "start_elapsed": start_elapsed,
-                "end_elapsed": end_elapsed,
+                "start_elapsed": (times.iloc[start] - t0).total_seconds(),
+                "end_elapsed": (times.iloc[end] - t0).total_seconds(),
                 "duration_s": duration,
-                "avg_power": avg_power,
-                "min_power": min_power,
-                "max_power": max_power,
+                "avg_power": avg_p,
+                "min_power": min_p,
+                "max_power": max_p,
                 "distance_m": distance_m,
                 "pace_per_km": pace_per_km,
                 "cv_%": cv_pct,
+                "end_reason": "end of file",
             })
 
     return sorted(segments, key=lambda x: x["start_elapsed"])
