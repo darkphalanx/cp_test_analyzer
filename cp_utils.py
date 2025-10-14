@@ -528,7 +528,10 @@ def detect_stable_segments_rolling(
     stability_ok = (roll_std / roll_mean).fillna(0) <= max_std_ratio
 
     # Optional: diagnostics (kept simple and parameter-safe)
-    stability = (roll_std / roll_mean).fillna(0)
+    import numpy as np
+    eps = 1e-6
+    safe_mean = roll_mean.where(roll_mean.abs() > eps, np.nan)
+    stability = (roll_std / safe_mean).replace([np.inf, -np.inf], np.nan).fillna(1.0)
     stable_mask = (stability <= max_std_ratio)
 
     # longest consecutive stable run (in samples)
