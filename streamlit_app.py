@@ -273,14 +273,15 @@ if run_analysis:
 
         seg_df = pd.DataFrame([
             {
-                "Segment #": i + 1,
+                "Start": seg["start_time"].strftime("%H:%M:%S"),
+                "End": seg["end_time"].strftime("%H:%M:%S"),
                 "Duration": str(timedelta(seconds=int(seg["duration_s"]))),
                 "Avg Power (W)": f"{seg['avg_power']:.1f}",
                 "Distance (m)": f"{seg['distance_m']:.0f}",
                 "Pace (/km)": str(timedelta(seconds=int(seg["pace_per_km"]))) if seg["pace_per_km"] else "–",
                 "Running Effectiveness": f"{seg['RE']:.3f}" if seg["RE"] else "–"
             }
-            for i, seg in enumerate(segments)
+            for seg in segments
         ])
 
         st.subheader("Detected Segments")
