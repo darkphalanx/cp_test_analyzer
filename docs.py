@@ -18,7 +18,6 @@ You perform two all-out efforts:
 - **12 minutes** (long, aerobic effort)
 
 The tool finds the **highest average power** over those durations and uses the **linear CP model**:
-
 """)
         st.latex(r"P = CP + \frac{W′}{t}")
         st.markdown(r"""
@@ -41,16 +40,15 @@ The average power from that segment, noted \( P_{5K} \), is converted into an es
 ---
 
 ##### **Empirical Formula**
-
-""" )
+""")
         st.latex(r"CP = P_{5K} \times f")
         st.markdown(r"""
 where:
 - \( P_{5K} \) = average power over the best 5 000 m segment  
 - \( f \) = empirical fatigue factor (depends on runner profile)
-""")
 
-st.markdown(r"""
+---
+
 ##### **Runner-Type Profiles**
 
 | Runner Type | Fatigue Factor \( f \) | CP as % of 5 K Power | Description |
@@ -79,9 +77,7 @@ For a 5 K effort with \( P_{5K} = 338.8 \text{ W} \):
         st.markdown(r"""
 Thus, the app reports an **estimated CP range of 326.9 – 333.7 W**,  
 with a *typical profile* estimate of ≈ **330.3 W**.
-""")
 
-st.markdown(r"""
 ---
 
 ### 📊 2️⃣ Segment Selection
@@ -98,7 +94,7 @@ st.markdown(r"""
 |---------|------------------|
 | **Critical Power (CP)** | Sustainable threshold — roughly 40–60 min race power. |
 | **W′** | Anaerobic work capacity (in kJ) — energy you can expend above CP before exhaustion. |
-| **Pace / km** | Equivalent running pace for the detected segment. |
+| **Pace /km** | Equivalent running pace for the detected segment. |
 
 ---
 
