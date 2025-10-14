@@ -107,12 +107,34 @@ with st.sidebar:
     # --- Segment Analysis Section ---
     with st.expander("📊 Segment Detection", expanded=(test_choice == "Segment Analysis")):
         if test_choice == "Segment Analysis":
-            smooth_window = st.slider("Smoothing Window (sec)", 1, 15, 5)
-            max_std = st.slider("Max Power Variability (%)", 1, 10, 5) / 100
-            max_gap = st.slider("Allowed Gap (sec)", 0, 60, 10)
-            max_gap_total = st.slider("Total Instability Allowed (sec)", 0, 120, 40,
-                help="Maximum total time of instability (power spikes, stops) tolerated before splitting a segment.")
-            min_duration = st.number_input("⏱️ Minimum Duration (minutes)", 3, 60, 10) * 60
+            sensitivity = st.radio(
+                "Detection Sensitivity",
+                ["Low", "Medium", "High"],
+                index=1,
+                help="Controls how easily segments split — higher = more sensitive to effort changes.",
+            )
+            min_duration = st.number_input("⏱️ Minimum Duration (minutes)", 3, 60, 5) * 60
+
+            if sensitivity == "Low":
+                smooth_window, max_std, max_pause, total_tolerance = 8, 0.06, 15, 60
+            elif sensitivity == "High":
+                smooth_window, max_std, max_pause, total_tolerance = 4, 0.035, 5, 30
+            else:
+                smooth_window, max_std, max_pause, total_tolerance = 6, 0.045, 8, 45
+
+            # Optional Advanced mode for fine-tuning
+            with st.expander("⚙️ Advanced Pause Handling", expanded=False):
+                max_pause = st.slider(
+                    "🕐 Max Pause Duration (sec)",
+                    0, 60, max_pause,
+                    help="Longest continuous stop or fluctuation allowed before ending a segment."
+                )
+                total_tolerance = st.slider(
+                    "🔁 Total Pause/Instability Tolerance (sec)",
+                    0, 120, total_tolerance,
+                    help="Total instability or stop time tolerated inside one segment."
+                )
+
 
     st.markdown("---")
     run_analysis = st.button("🚀 Run Analysis")
@@ -282,8 +304,8 @@ if run_analysis:
             df,
             max_std_ratio=max_std,
             smooth_window_sec=smooth_window,
-            max_gap_sec=max_gap,
-            max_gap_total_sec=max_gap_total,   # new slider value
+            max_gap_sec=max_pause,
+            max_gap_total_sec=total_tolerance,
             min_duration_sec=min_duration,
         )
 
