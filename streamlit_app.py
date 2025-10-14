@@ -107,11 +107,28 @@ with st.sidebar:
     # --- Segment Analysis Section ---
     with st.expander("📊 Segment Detection", expanded=(test_choice == "Segment Analysis")):
         if test_choice == "Segment Analysis":
-            smooth_window   = st.slider("📈 Smoothing Window (sec)", 1, 15, 6)
-            max_std         = st.slider("📊 Power Variability Threshold (%)", 2, 10, 5) / 100
-            allowed_spike   = st.slider("⚠️ Allowed Spike Duration (sec)", 0, 30, 5,
-                                        help="Max consecutive seconds outside stability before a segment ends.")
-            min_duration    = st.number_input("⏱️ Minimum Duration (seconds)", 1, 600, 1)
+            sensitivity = st.radio(
+                "Detection Sensitivity",
+                ["Low", "Medium", "High"],
+                index=1,
+                help="Higher = more sensitive to effort changes."
+            )
+
+            # Presets
+            if sensitivity == "Low":
+                smooth_window, max_std, allowed_spike = 8, 0.06, 8
+            elif sensitivity == "High":
+                smooth_window, max_std, allowed_spike = 4, 0.035, 3
+            else:
+                smooth_window, max_std, allowed_spike = 6, 0.045, 5
+
+            # Advanced (optional)
+            with st.expander("⚙️ Advanced", expanded=False):
+                smooth_window = st.slider("📈 Smoothing Window (sec)", 1, 15, smooth_window)
+                max_std = st.slider("📊 Power Variability Threshold (%)", 2, 10, int(max_std * 100)) / 100
+                allowed_spike = st.slider("⚠️ Allowed Spike Duration (sec)", 0, 30, allowed_spike,
+                                          help="Max consecutive seconds outside stability before a segment ends.")
+
 
 
     st.markdown("---")
@@ -276,27 +293,23 @@ if run_analysis:
     # Segment Analysis (Running Effectiveness)
     # ==============================================================
     elif "Segment Analysis" in test_choice:
-
-        # Run detection
         segments = detect_stable_segments_rolling(
             df,
             max_std_ratio=max_std,
             smooth_window_sec=smooth_window,
             allowed_spike_sec=allowed_spike,
-            min_duration_sec=min_duration,
         )
 
         if not segments:
-            st.warning("No stable power segments found within the specified range and duration.")
+            st.warning("No stable segments found with the current settings.")
             st.stop()
 
-        # Compute Running Effectiveness for each segment
+        # Compute Running Effectiveness for each segment (needs stryd_weight)
         for seg in segments:
             seg["RE"] = running_effectiveness(
                 seg["distance_m"], seg["duration_s"], seg["avg_power"], stryd_weight
             )
 
-        # Build DataFrame for display
         seg_df = pd.DataFrame([
             {
                 "Start": str(timedelta(seconds=int(seg["start_elapsed"]))),
@@ -311,19 +324,23 @@ if run_analysis:
                     str(timedelta(seconds=int(seg["pace_per_km"])))
                     if seg["pace_per_km"] else "–"
                 ),
-                "End Reason": seg.get("end_reason", "–"),   # 👈 NEW
+                "RE": f"{seg['RE']:.3f}" if seg["RE"] else "–",
+                "End Reason": seg.get("end_reason", "–"),
             }
             for seg in segments
         ])
 
-        # Summary
-        total_time = sum(seg["duration_s"] for seg in segments)
-        total_time_fmt = str(timedelta(seconds=int(total_time)))
-        avg_re = np.nanmean([seg["RE"] for seg in segments if seg["RE"]])
-
         st.subheader("Detected Segments")
-        st.caption(f"Total stable time detected: **{total_time_fmt}** across {len(segments)} segments.")
         st.dataframe(seg_df, width="stretch")
+
+        avg_re = np.nanmean([seg["RE"] for seg in segments if seg["RE"]])
+        show_result_card(
+            "Average Running Effectiveness",
+            f"{avg_re:.3f}",
+            "Typical values: 0.98 – 1.05 for most runners",
+            color="#16a34a"
+        )
+
 
 
 st.markdown("---")

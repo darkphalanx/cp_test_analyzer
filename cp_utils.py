@@ -505,7 +505,6 @@ def detect_stable_segments_rolling(
     max_std_ratio=0.05,
     smooth_window_sec=6,
     allowed_spike_sec=5,     # max consecutive seconds outside variability
-    min_duration_sec=300,
     sampling_rate=1,
     pause_threshold_w=5,     # stops (<5 W) end segment immediately
 ):
@@ -514,11 +513,11 @@ def detect_stable_segments_rolling(
     - Stability: rolling_std / rolling_mean <= max_std_ratio
     - Allowed spikes: up to 'allowed_spike_sec' consecutive unstable samples
     - Stops: power < pause_threshold_w ends segment immediately (separate segment)
-    - Adds 'end_reason' to each segment ("stop/pause ~Xs", "spike > Xs", "end of file")
+    - Adds 'end_reason' to each segment ("stop/pause ~Xs", "instability spike > Xs", "end of file")
+    - NOTE: No minimum-duration filtering; every closed segment is returned.
     """
     import pandas as pd, numpy as np, datetime
 
-    # Validate
     for col in ["power", "Watch Distance (meters)", "timestamp"]:
         if col not in df.columns:
             raise ValueError(f"Column '{col}' not found in DataFrame.")
@@ -538,113 +537,70 @@ def detect_stable_segments_rolling(
     start = None
     spike_count = 0
     spike_limit = int(allowed_spike_sec * sampling_rate)
-
     n = len(df)
+
+    def _append_segment(end_idx, reason):
+        end = max(end_idx, start)
+        duration = (end - start + 1) / sampling_rate
+        # keep a tiny guard against zero-length
+        if duration <= 0:
+            return
+        seg_pow = smooth_power[start:end+1]
+        avg_p = float(np.mean(seg_pow))
+        min_p = float(np.min(seg_pow))
+        max_p = float(np.max(seg_pow))
+        cv_pct = float(100 * np.std(seg_pow) / avg_p) if avg_p > 0 else None
+        distance_m = float(dist[end] - dist[start])
+        pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
+        segments.append({
+            "start_idx": start,
+            "end_idx": end,
+            "start_elapsed": (times.iloc[start] - t0).total_seconds(),
+            "end_elapsed": (times.iloc[end] - t0).total_seconds(),
+            "duration_s": duration,
+            "avg_power": avg_p,
+            "min_power": min_p,
+            "max_power": max_p,
+            "distance_m": distance_m,
+            "pace_per_km": pace_per_km,
+            "cv_%": cv_pct,
+            "end_reason": reason,
+        })
+
     for i in range(n):
-        # If this is a stop, end current segment immediately
+        # Hard split on stop/pause
         if raw_power[i] < pause_threshold_w:
-            # estimate pause length (peek ahead, does not change iteration)
+            # estimate pause length (peek ahead)
             k = i
             while k < n and raw_power[k] < pause_threshold_w:
                 k += 1
             pause_len_sec = (k - i) / sampling_rate
 
             if start is not None:
-                end = i - 1
-                end = max(end - spike_count, start)  # drop trailing spikes
-                duration = (end - start + 1) / sampling_rate
-                if duration >= min_duration_sec:
-                    seg_pow = smooth_power[start:end+1]
-                    avg_p = float(np.mean(seg_pow))
-                    min_p = float(np.min(seg_pow))
-                    max_p = float(np.max(seg_pow))
-                    cv_pct = float(100 * np.std(seg_pow) / avg_p) if avg_p > 0 else None
-                    distance_m = float(dist[end] - dist[start])
-                    pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
-                    segments.append({
-                        "start_idx": start,
-                        "end_idx": end,
-                        "start_elapsed": (times.iloc[start] - t0).total_seconds(),
-                        "end_elapsed": (times.iloc[end] - t0).total_seconds(),
-                        "duration_s": duration,
-                        "avg_power": avg_p,
-                        "min_power": min_p,
-                        "max_power": max_p,
-                        "distance_m": distance_m,
-                        "pace_per_km": pace_per_km,
-                        "cv_%": cv_pct,
-                        "end_reason": f"stop/pause ~{int(round(pause_len_sec))}s",
-                    })
-            # reset state; stop creates a hard split
+                end_idx = i - 1 - spike_count  # drop trailing spikes
+                if end_idx >= start:
+                    _append_segment(end_idx, f"stop/pause ~{int(round(pause_len_sec))}s")
             start = None
             spike_count = 0
             continue
 
-        # Not a stop; evaluate stability
         if stability_ok.iloc[i]:
             if start is None:
                 start = i
             spike_count = 0
         else:
-            # spike (unstable second)
             if start is not None:
                 spike_count += 1
                 if spike_count > spike_limit:
-                    end = i - spike_count  # last stable index
-                    duration = (end - start + 1) / sampling_rate
-                    if duration >= min_duration_sec:
-                        seg_pow = smooth_power[start:end+1]
-                        avg_p = float(np.mean(seg_pow))
-                        min_p = float(np.min(seg_pow))
-                        max_p = float(np.max(seg_pow))
-                        cv_pct = float(100 * np.std(seg_pow) / avg_p) if avg_p > 0 else None
-                        distance_m = float(dist[end] - dist[start])
-                        pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
-                        segments.append({
-                            "start_idx": start,
-                            "end_idx": end,
-                            "start_elapsed": (times.iloc[start] - t0).total_seconds(),
-                            "end_elapsed": (times.iloc[end] - t0).total_seconds(),
-                            "duration_s": duration,
-                            "avg_power": avg_p,
-                            "min_power": min_p,
-                            "max_power": max_p,
-                            "distance_m": distance_m,
-                            "pace_per_km": pace_per_km,
-                            "cv_%": cv_pct,
-                            "end_reason": f"instability spike > {allowed_spike_sec}s",
-                        })
+                    end_idx = i - spike_count  # last stable
+                    _append_segment(end_idx, f"instability spike > {allowed_spike_sec}s")
                     start = None
                     spike_count = 0
-            # else: not in a segment yet; wait for stability to start
 
-    # Trailing segment (if we ended inside a segment)
+    # trailing segment
     if start is not None:
-        end = n - 1 - spike_count  # drop trailing spikes
-        end = max(end, start)
-        duration = (end - start + 1) / sampling_rate
-        if duration >= min_duration_sec:
-            seg_pow = smooth_power[start:end+1]
-            avg_p = float(np.mean(seg_pow))
-            min_p = float(np.min(seg_pow))
-            max_p = float(np.max(seg_pow))
-            cv_pct = float(100 * np.std(seg_pow) / avg_p) if avg_p > 0 else None
-            distance_m = float(dist[end] - dist[start])
-            pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
-            segments.append({
-                "start_idx": start,
-                "end_idx": end,
-                "start_elapsed": (times.iloc[start] - t0).total_seconds(),
-                "end_elapsed": (times.iloc[end] - t0).total_seconds(),
-                "duration_s": duration,
-                "avg_power": avg_p,
-                "min_power": min_p,
-                "max_power": max_p,
-                "distance_m": distance_m,
-                "pace_per_km": pace_per_km,
-                "cv_%": cv_pct,
-                "end_reason": "end of file",
-            })
+        end_idx = n - 1 - spike_count  # drop trailing spikes
+        _append_segment(end_idx, "end of file")
 
     return sorted(segments, key=lambda x: x["start_elapsed"])
 
