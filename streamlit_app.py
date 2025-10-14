@@ -3,7 +3,7 @@ import pandas as pd
 from cp_utils import (
     load_csv_auto, best_avg_power, best_power_for_distance,
     extend_best_segment, compute_cp_linear, compute_cp_5k_range,
-    detect_segments, running_effectiveness, detect_stable_power_segments
+    detect_segments, running_effectiveness, detect_stable_power_segments, detect_target_segments_rolling
 )
 
 from datetime import timedelta
@@ -270,7 +270,15 @@ if run_analysis:
         if 'auto_mode' in locals() and auto_mode:
             segments = detect_stable_power_segments(df, max_std_ratio=max_std, min_duration_sec=min_duration, smooth_window_sec=smooth_window)
         else:
-            segments = detect_segments(df, target_power=target_power, tolerance=tolerance, min_duration_sec=min_duration)
+            segments = detect_target_segments_rolling(
+            df,
+            target_power=target_power,
+            tolerance=tolerance,
+            smooth_window_sec=smooth_window,
+            max_gap_sec=max_gap,
+            min_duration_sec=min_duration,
+        )
+
 
         if not segments:
             st.warning("No stable power segments found within the specified range and duration.")
