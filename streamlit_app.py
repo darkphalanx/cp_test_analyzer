@@ -273,8 +273,8 @@ if run_analysis:
 
         seg_df = pd.DataFrame([
             {
-                "Start": seg["start_time"].strftime("%H:%M:%S"),
-                "End": seg["end_time"].strftime("%H:%M:%S"),
+                "Start": seg["elapsed_start"],
+                "End": seg["elapsed_end"],
                 "Duration": str(timedelta(seconds=int(seg["duration_s"]))),
                 "Avg Power (W)": f"{seg['avg_power']:.1f}",
                 "Distance (m)": f"{seg['distance_m']:.0f}",
