@@ -131,25 +131,56 @@ def compute_cp_5k_range(p):
 
 # ---------- Segment Detection & Running Effectiveness ---------- #
 
-def detect_segments(df, target_power, tolerance=0.05, min_duration_sec=300, sampling_rate=1, max_gap_sec=5):
+def detect_segments(
+    df,
+    target_power,
+    tolerance=0.05,
+    min_duration_sec=300,
+    sampling_rate=1,
+    max_gap_sec=5,
+    smooth_window_sec=5,
+):
     """
     Detect continuous segments where average power stays within ±tolerance of target_power,
-    allowing brief gaps (max_gap_sec) before ending a segment.
+    allowing brief gaps (max_gap_sec) and applying optional smoothing.
+
+    Args:
+        df: DataFrame with 'power', 'Watch Distance (meters)', and 'timestamp' columns.
+        target_power: Target wattage.
+        tolerance: ± fraction (e.g., 0.05 = 5 %).
+        min_duration_sec: Minimum segment duration in seconds.
+        sampling_rate: Samples per second (default 1 Hz).
+        max_gap_sec: Seconds allowed outside range before breaking a segment.
+        smooth_window_sec: Rolling-average smoothing window (seconds).
     """
     import pandas as pd
+    import datetime
 
-    if "power" not in df.columns:
-        raise ValueError("Column 'power' not found in DataFrame.")
-    if "Watch Distance (meters)" not in df.columns:
-        raise ValueError("Column 'Watch Distance (meters)' not found in DataFrame.")
-    if "timestamp" not in df.columns:
-        raise ValueError("Column 'timestamp' not found in DataFrame.")
+    # --- Validate columns
+    for col in ["power", "Watch Distance (meters)", "timestamp"]:
+        if col not in df.columns:
+            raise ValueError(f"Column '{col}' not found in DataFrame.")
 
-    power = pd.to_numeric(df["power"], errors="coerce").to_numpy()
+    # --- Rolling-average smoothing to reduce second-to-second spikes
+    window = int(smooth_window_sec * sampling_rate)
+    df["smooth_power"] = (
+        df["power"]
+        .rolling(window=window, center=True, min_periods=1)
+        .mean()
+    )
+
+    # --- Adaptive tolerance scaling
+    # Loosen tolerance for long steady runs (>15 min)
+    if min_duration_sec >= 1800:       # >30 min
+        tolerance *= 1.5
+    elif min_duration_sec >= 900:      # 15–30 min
+        tolerance *= 1.2
+
+    power = pd.to_numeric(df["smooth_power"], errors="coerce").to_numpy()
     dist = pd.to_numeric(df["Watch Distance (meters)"], errors="coerce").ffill().to_numpy()
     times = pd.to_datetime(df["timestamp"], errors="coerce").reset_index(drop=True)
-
     t0 = times.iloc[0]
+
     lower = target_power * (1 - tolerance)
     upper = target_power * (1 + tolerance)
     in_zone = (power >= lower) & (power <= upper)
@@ -171,11 +202,13 @@ def detect_segments(df, target_power, tolerance=0.05, min_duration_sec=300, samp
                 duration = (end - start + 1) / sampling_rate
                 if duration >= min_duration_sec:
                     avg_power = power[start:end + 1].mean()
-                    avg_min_power, avg_max_power = average_min_max(power[start:end + 1], chunk_size=10, sampling_rate=sampling_rate)
+                    avg_min_power, avg_max_power = average_min_max(
+                        power[start:end + 1], chunk_size=10, sampling_rate=sampling_rate
+                    )
                     distance_m = dist[end] - dist[start]
                     pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
-                    elapsed_start = str(pd.to_timedelta((times.iloc[start] - t0).total_seconds(), unit="s")).split()[-1]
-                    elapsed_end = str(pd.to_timedelta((times.iloc[end] - t0).total_seconds(), unit="s")).split()[-1]
+                    elapsed_start = str(datetime.timedelta(seconds=int((times.iloc[start] - t0).total_seconds())))
+                    elapsed_end = str(datetime.timedelta(seconds=int((times.iloc[end] - t0).total_seconds())))
                     segments.append({
                         "start_idx": start,
                         "end_idx": end,
@@ -191,17 +224,19 @@ def detect_segments(df, target_power, tolerance=0.05, min_duration_sec=300, samp
                 start = None
                 gap_count = 0
 
-    # Handle segment to end
+    # --- Handle segment that continues to end
     if start is not None:
         end = len(in_zone) - 1
         duration = (end - start + 1) / sampling_rate
         if duration >= min_duration_sec:
             avg_power = power[start:end + 1].mean()
-            avg_min_power, avg_max_power = average_min_max(power[start:end + 1], chunk_size=10, sampling_rate=sampling_rate)
+            avg_min_power, avg_max_power = average_min_max(
+                power[start:end + 1], chunk_size=10, sampling_rate=sampling_rate
+            )
             distance_m = dist[end] - dist[start]
             pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
-            elapsed_start = str(pd.to_timedelta((times.iloc[start] - t0).total_seconds(), unit="s")).split()[-1]
-            elapsed_end = str(pd.to_timedelta((times.iloc[end] - t0).total_seconds(), unit="s")).split()[-1]
+            elapsed_start = str(datetime.timedelta(seconds=int((times.iloc[start] - t0).total_seconds())))
+            elapsed_end = str(datetime.timedelta(seconds=int((times.iloc[end] - t0).total_seconds())))
             segments.append({
                 "start_idx": start,
                 "end_idx": end,
@@ -210,12 +245,13 @@ def detect_segments(df, target_power, tolerance=0.05, min_duration_sec=300, samp
                 "duration_s": duration,
                 "avg_power": avg_power,
                 "min_power": avg_min_power,
-                "max_power": avg_max_power,                
+                "max_power": avg_max_power,
                 "distance_m": distance_m,
                 "pace_per_km": pace_per_km
             })
 
     return sorted(segments, key=lambda x: x["elapsed_start"])
+
 
 def detect_stable_power_segments(
     df,
