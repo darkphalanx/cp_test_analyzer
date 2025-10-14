@@ -135,26 +135,20 @@ def detect_segments(df, target_power, tolerance=0.05, min_duration_sec=300, samp
     Detect continuous segments where average power stays within ±tolerance of target_power
     for at least min_duration_sec seconds.
 
-    Args:
-        df: DataFrame with 'power' and 'Watch Distance (meters)' columns.
-        target_power: target power in Watts (float).
-        tolerance: fractional tolerance (0.05 = ±5%).
-        min_duration_sec: minimum segment duration to be considered (seconds).
-        sampling_rate: samples per second (default 1).
-
-    Returns:
-        List of dicts: each containing start_idx, end_idx, duration, avg_power,
-        distance_m, pace_per_km, and RE placeholder (to compute later).
+    Returns a chronologically sorted list of segments with timestamps.
     """
     import pandas as pd
 
     if "power" not in df.columns:
-        raise ValueError("Column 'Power (w/kg)' not found in DataFrame.")
+        raise ValueError("Column 'power' not found in DataFrame.")
     if "Watch Distance (meters)" not in df.columns:
         raise ValueError("Column 'Watch Distance (meters)' not found in DataFrame.")
+    if "timestamp" not in df.columns:
+        raise ValueError("Column 'timestamp' not found in DataFrame.")
 
     power = pd.to_numeric(df["power"], errors="coerce").to_numpy()
     dist = pd.to_numeric(df["Watch Distance (meters)"], errors="coerce").ffill().to_numpy()
+    times = pd.to_datetime(df["timestamp"], errors="coerce")
 
     lower = target_power * (1 - tolerance)
     upper = target_power * (1 + tolerance)
@@ -171,12 +165,14 @@ def detect_segments(df, target_power, tolerance=0.05, min_duration_sec=300, samp
             end = i - 1
             duration = (end - start + 1) / sampling_rate
             if duration >= min_duration_sec:
-                avg_power = power[start:end+1].mean()
+                avg_power = power[start:end + 1].mean()
                 distance_m = dist[end] - dist[start]
                 pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
                 segments.append({
                     "start_idx": start,
                     "end_idx": end,
+                    "start_time": times.iloc[start],
+                    "end_time": times.iloc[end],
                     "duration_s": duration,
                     "avg_power": avg_power,
                     "distance_m": distance_m,
@@ -184,49 +180,47 @@ def detect_segments(df, target_power, tolerance=0.05, min_duration_sec=300, samp
                 })
             start = None
 
-    # Handle case where segment extends to end
+    # Handle segment that continues to end
     if start is not None:
         end = len(in_zone) - 1
         duration = (end - start + 1) / sampling_rate
         if duration >= min_duration_sec:
-            avg_power = power[start:end+1].mean()
+            avg_power = power[start:end + 1].mean()
             distance_m = dist[end] - dist[start]
             pace_per_km = (duration / (distance_m / 1000)) if distance_m > 0 else None
             segments.append({
                 "start_idx": start,
                 "end_idx": end,
+                "start_time": times.iloc[start],
+                "end_time": times.iloc[end],
                 "duration_s": duration,
                 "avg_power": avg_power,
                 "distance_m": distance_m,
                 "pace_per_km": pace_per_km
             })
 
+    # Sort segments chronologically
+    segments = sorted(segments, key=lambda x: x["start_time"])
     return segments
 
 def detect_stable_power_segments(df, max_std_ratio=0.05, min_duration_sec=300, sampling_rate=1):
     """
     Automatically detect steady-state power segments based on low variability.
-
-    Args:
-        df: DataFrame containing 'power' and 'Watch Distance (meters)' columns.
-        max_std_ratio: Maximum allowed ratio (std / mean) within a segment (default 0.05 = 5%).
-        min_duration_sec: Minimum segment duration (seconds).
-        sampling_rate: Samples per second (default = 1 Hz).
-
-    Returns:
-        List of dicts: detected steady segments with start/end indices, duration,
-        avg_power, distance, and pace.
+    Includes timestamps and sorts chronologically.
     """
     import pandas as pd
     import numpy as np
 
     if "power" not in df.columns:
-        raise ValueError("Column 'Power (w/kg)' not found in DataFrame.")
+        raise ValueError("Column 'power' not found in DataFrame.")
     if "Watch Distance (meters)" not in df.columns:
         raise ValueError("Column 'Watch Distance (meters)' not found in DataFrame.")
+    if "timestamp" not in df.columns:
+        raise ValueError("Column 'timestamp' not found in DataFrame.")
 
     power = pd.to_numeric(df["power"], errors="coerce").to_numpy()
     dist = pd.to_numeric(df["Watch Distance (meters)"], errors="coerce").ffill().to_numpy()
+    times = pd.to_datetime(df["timestamp"], errors="coerce")
 
     window = int(min_duration_sec * sampling_rate)
     n = len(df)
@@ -253,15 +247,19 @@ def detect_stable_power_segments(df, max_std_ratio=0.05, min_duration_sec=300, s
             segments.append({
                 "start_idx": i,
                 "end_idx": j,
+                "start_time": times.iloc[i],
+                "end_time": times.iloc[j - 1],
                 "duration_s": duration,
                 "avg_power": avg_power,
                 "distance_m": distance_m,
                 "pace_per_km": pace_per_km
             })
-            i = j  # jump to end of detected block
+            i = j
         else:
-            i += window // 2  # move forward half window
+            i += window // 2
 
+    # Sort chronologically
+    segments = sorted(segments, key=lambda x: x["start_time"])
     return segments
 
 def running_effectiveness(distance_m, duration_s, power_w, weight_kg):
