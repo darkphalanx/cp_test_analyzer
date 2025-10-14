@@ -111,7 +111,7 @@ with st.sidebar:
             max_std         = st.slider("📊 Power Variability Threshold (%)", 2, 10, 5) / 100
             allowed_spike   = st.slider("⚠️ Allowed Spike Duration (sec)", 0, 30, 5,
                                         help="Max consecutive seconds outside stability before a segment ends.")
-            min_duration    = st.number_input("⏱️ Minimum Duration (minutes)", 3, 60, 5) * 60
+            min_duration    = st.number_input("⏱️ Minimum Duration (seconds)", 1, 600, 1)
 
 
     st.markdown("---")
