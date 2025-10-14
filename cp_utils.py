@@ -7,6 +7,7 @@ Used by: Streamlit front-end (streamlit_app.py)
 import pandas as pd
 import numpy as np
 import streamlit as st
+import datetime
 
 # ---------- CSV Handling ---------- #
 
@@ -204,8 +205,8 @@ def detect_segments(df, target_power, tolerance=0.05, min_duration_sec=300, samp
             segments.append({
                 "start_idx": start,
                 "end_idx": end,
-                "elapsed_start": str(pd.to_timedelta(elapsed_start, unit="s")).split()[-1],
-                "elapsed_end": str(pd.to_timedelta(elapsed_end, unit="s")).split()[-1],
+                "elapsed_start": str(datetime.timedelta(seconds=int(elapsed_start))),
+                "elapsed_end": str(datetime.timedelta(seconds=int(elapsed_end))),
                 "duration_s": duration,
                 "avg_power": avg_power,
                 "distance_m": distance_m,
@@ -267,8 +268,8 @@ def detect_stable_power_segments(df, max_std_ratio=0.05, min_duration_sec=300, s
             segments.append({
                 "start_idx": i,
                 "end_idx": j,
-                "elapsed_start": str(pd.to_timedelta(elapsed_start, unit="s")).split()[-1],
-                "elapsed_end": str(pd.to_timedelta(elapsed_end, unit="s")).split()[-1],
+                "elapsed_start": str(datetime.timedelta(seconds=int(elapsed_start))),
+                "elapsed_end": str(datetime.timedelta(seconds=int(elapsed_end))),
                 "duration_s": duration,
                 "avg_power": avg_power,
                 "distance_m": distance_m,
