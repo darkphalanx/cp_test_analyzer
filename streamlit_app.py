@@ -383,7 +383,7 @@ if run_analysis:
         st.subheader("Detected Segments")
         st.dataframe(seg_df, width="stretch")
 
-        avg_re = np.nanmean([seg["RE"] for seg in segments if seg["RE"]])
+        avg_re = np.nanmean([seg.get("RE") for seg in segments_display if seg.get("RE") is not None])
         show_result_card(
             "Average Running Effectiveness",
             f"{avg_re:.3f}",
