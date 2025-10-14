@@ -86,12 +86,11 @@ with st.sidebar:
         st.markdown("---")
         auto_mode = st.toggle("🔍 Auto-detect stable segments", value=True)
         st.subheader("Segment Detection Settings")
-        max_gap = st.number_input("Allow brief gap (sec)", 0, 120, 10)
-
+        smooth_window = st.slider("Smoothing window (sec)", 1, 10, 5)
+        
         if auto_mode:
             max_std = st.slider("Max Power Variability (%)", 1, 10, 5) / 100
             min_duration = st.number_input("⏱️ Minimum Duration (minutes)", 3, 60, 10) * 60
-            smooth_window = st.slider("Smoothing window (sec)", 1, 10, 5)
         else:
             target_power = st.number_input("🎯 Target Power (W)", 100.0, 600.0, step=1.0)
             tolerance = st.slider("± Power Tolerance (%)", 1, 10, 5) / 100
@@ -268,6 +267,7 @@ if run_analysis:
     # ==============================================================
     elif "Segment Analysis" in test_choice:
         if 'auto_mode' in locals() and auto_mode:
+            smooth_window = smooth_window if "smooth_window" in locals() else 5
             segments = detect_stable_segments_rolling(
                 df,
                 max_std_ratio=max_std,
@@ -275,6 +275,7 @@ if run_analysis:
                 min_duration_sec=min_duration,
             )
         else:
+            smooth_window = smooth_window if "smooth_window" in locals() else 5
             segments = detect_target_segments_rolling(
             df,
             target_power=target_power,
