@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import timedelta
-from cp_utils_refactored import (
+from cp_utils import (
     load_csv_auto,
     best_avg_power,
     best_power_for_distance,
