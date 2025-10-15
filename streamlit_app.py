@@ -252,29 +252,34 @@ if run_analysis:
         else:
             tbl = pd.DataFrame([
                 {
+                    "Block": idx,
                     "Duration": str(timedelta(seconds=int(b["duration_s"]))),
                     "Avg Power (W)": f"{b['avg_power']:.1f}",
                     "Distance (m)": f"{b['distance_m']:.0f}",
                     "Pace (/km)": str(timedelta(seconds=int(b["pace_per_km"]))) if b["pace_per_km"] else "–",
                     "RE": f"{b['RE']:.3f}" if b.get("RE") else "–",
                 }
-                for b in blocks
+                for idx, b in enumerate(blocks, start=1)
             ])
             st.subheader("Stable Blocks")
             st.dataframe(tbl, use_container_width=True)
 
             # Visual overlay: power vs time with shaded stable blocks
+            # Use elapsed seconds for x-axis to match PDC axis semantics
+            elapsed_s = (df["timestamp"] - df["timestamp"].iloc[0]).dt.total_seconds()
             smooth_power_series = df["power"].rolling(window=max(1, smooth_window), min_periods=1).mean()
-            fig2 = go.Figure()
-            fig2.add_trace(go.Scatter(x=df["timestamp"], y=df["power"], mode="lines", name="Power (W)", opacity=0.35))
-            fig2.add_trace(go.Scatter(x=df["timestamp"], y=smooth_power_series, mode="lines", name=f"Smoothed ({smooth_window}s)"))
 
-            # Color each block differently
+            fig2 = go.Figure()
+            fig2.add_trace(go.Scatter(x=elapsed_s, y=df["power"], mode="lines", name="Power (W)", opacity=0.35))
+            fig2.add_trace(go.Scatter(x=elapsed_s, y=smooth_power_series, mode="lines", name=f"Smoothed ({smooth_window}s)"))
+
+            # Color each block differently and add number-only labels
             palette = ["LightGreen", "LightSkyBlue", "LightSalmon", "Khaki", "Plum", "LightPink", "PaleTurquoise", "Wheat"]
             shapes = []
-            for idx, b in enumerate(blocks):
-                x0 = df.loc[b["start_idx"], "timestamp"]
-                x1 = df.loc[b["end_idx"], "timestamp"]
+            annotations = []
+            for idx, b in enumerate(blocks, start=1):
+                x0 = elapsed_s.iloc[b["start_idx"]]
+                x1 = elapsed_s.iloc[b["end_idx"]]
                 shapes.append({
                     "type": "rect",
                     "xref": "x",
@@ -283,38 +288,47 @@ if run_analysis:
                     "x1": x1,
                     "y0": 0,
                     "y1": 1,
-                    "fillcolor": palette[idx % len(palette)],
+                    "fillcolor": palette[(idx-1) % len(palette)],
                     "opacity": 0.25,
                     "line": {"width": 0},
                 })
-
-            # Add block number annotations centered in each shaded area
-            annotations = []
-            for idx, b in enumerate(blocks):
-                x0 = df.loc[b["start_idx"], "timestamp"]
-                x1 = df.loc[b["end_idx"], "timestamp"]
-                x_mid = x0 + (x1 - x0) / 2
                 annotations.append(dict(
-                    x=x_mid,
+                    x=(x0 + x1) / 2,
                     y=1.01,
                     xref="x",
                     yref="paper",
-                    text=f"Block {idx+1}",
+                    text=f"{idx}",
                     showarrow=False,
                     font=dict(size=12),
                     align="center",
                 ))
 
+            # Dynamic tick labels (same style as PDC)
+            max_x = float(elapsed_s.max()) if len(elapsed_s) else 3600
+            base_ticks = [5, 10, 15, 30, 45, 60, 120, 180, 300, 600, 900, 1200, 1800, 3600, 5400, 7200, 10800, 14400]
+            tickvals = [t for t in base_ticks if t <= max_x]
+            def _fmt_short(sec: int) -> str:
+                if sec < 60:
+                    return f"{sec}s"
+                m, s = divmod(sec, 60)
+                if sec < 3600:
+                    return f"{m}m" if s == 0 else f"{m}m{s:02d}s"
+                h, m = divmod(m, 60)
+                return f"{h}h" if m == 0 else f"{h}h{m:02d}m"
+            ticktext = [_fmt_short(int(t)) for t in tickvals]
+
             fig2.update_layout(
-                title="Power over Time (Stable Blocks shaded)",
-                xaxis_title="Time",
+                title="Power over Time (Stable Blocks)",
+                xaxis_title="Elapsed Time",
                 yaxis_title="Power (W)",
+                xaxis_type="log",
                 template="plotly_white",
                 height=460,
                 shapes=shapes,
                 annotations=annotations,
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             )
+            fig2.update_xaxes(tickmode="array", tickvals=tickvals, ticktext=ticktext)
 
             st.plotly_chart(fig2, use_container_width=True)
 
