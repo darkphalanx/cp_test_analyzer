@@ -1,11 +1,7 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import timedelta
-import hashlib
-import plotly.graph_objects as go
-
 from cp_utils import (
     load_csv_auto,
     best_avg_power,
@@ -13,149 +9,178 @@ from cp_utils import (
     extend_best_segment,
     compute_cp_linear,
     compute_cp_5k_range,
-    compute_power_duration_curve,
-    detect_stable_blocks,
     running_effectiveness,
+    detect_stable_segments_rolling,  # only current detection function
 )
 from docs import render_documentation
 
-def fmt_sec_hms(total_s: int) -> str:
-    total_s = int(total_s)
-    m, s = divmod(total_s, 60)
-    h, m = divmod(m, 60)
-    return f"{h:d}:{m:02d}:{s:02d}" if h > 0 else f"{m:d}:{s:02d}"
-
-def fmt_pace_mmss(sec_val):
-    if not sec_val:
-        return "–"
-    try:
-        total = int(sec_val)
-    except Exception:
-        return "–"
-    m, s = divmod(total, 60)
-    return f"{m:02d}:{s:02d}"
-
-def fmt_short_axis(sec: int) -> str:
-    if sec < 60:
-        return f"{sec}s"
-    m, s = divmod(sec, 60)
-    if sec < 3600:
-        return f"{m}m" if s == 0 else f"{m}m{s:02d}s"
-    h, m = divmod(m, 60)
-    return f"{h}h" if m == 0 else f"{h}h{m:02d}m"
-
-@st.cache_data(show_spinner=False)
-def load_csv_cached(file_bytes: bytes):
-    import io
-    df = load_csv_auto(io.BytesIO(file_bytes))
-    return df
-
-@st.cache_data(show_spinner=False)
-def compute_pdc_cached(file_hash: str, max_dur: int, pdc_step: int, power_series: pd.Series) -> pd.DataFrame:
-    durations = np.arange(5, max_dur + 1, pdc_step, dtype=int)
-    s = power_series.reset_index(drop=True)
-    pows = []
-    for d in durations:
-        rm = s.rolling(d, min_periods=d).mean()
-        m = float(rm.max()) if rm.notna().any() else np.nan
-        pows.append(m)
-    return pd.DataFrame({"duration_s": durations, "best_power_w": pows}).dropna()
-
-@st.cache_data(show_spinner=False)
-def detect_stable_blocks_cached(file_hash: str, max_std: float, min_block: int, smooth_window: int, stryd_weight: float, df: pd.DataFrame):
-    return detect_stable_blocks(
-        df,
-        max_std_ratio=max_std,
-        min_duration_sec=min_block,
-        smooth_window_sec=smooth_window,
-        weight_kg=float(stryd_weight) if stryd_weight else None,
-    )
-
+# --- Helper: Styled Result Card ---
 def show_result_card(title: str, main_value: str, subtext: str = "", color: str = "#0b5394"):
+    """
+    Display a stylized result card for key outcomes.
+    - title: main heading (e.g. "Critical Power (3/12 Test)")
+    - main_value: emphasized numeric result
+    - subtext: secondary info (e.g. W′)
+    - color: accent color for highlight (default = blue)
+    """
     st.markdown("---")
     st.markdown(
         f"""
         <div style="
             text-align:center;
             padding: 1.6rem;
-            background-color: #ffffff;
+            background-color: #ffffff;  /* white card for contrast in dark/light mode */
             border-radius: 10px;
             border: 2px solid #e0e0e0;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             margin-top: 1.5rem;
         ">
             <h2 style="color:{color}; margin-bottom:0.7rem;">🏁 {title}</h2>
-            <p style="font-size:1.7rem;font-weight:800;color:{color};margin:0;">{main_value}</p>
-            <p style="font-size:1.15rem;color:#333;margin-top:0.4rem;">{subtext}</p>
+            <p style="
+                font-size:1.7rem;
+                font-weight:800;
+                color:{color};
+                margin:0;
+            ">
+                {main_value}
+            </p>
+            <p style="
+                font-size:1.15rem;
+                color:#333;
+                margin-top:0.4rem;
+            ">
+                {subtext}
+            </p>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-st.set_page_config(page_title="Critical Power Analyzer", page_icon="⚡", layout="wide")
 
+st.set_page_config(
+    page_title="Critical Power Analyzer",
+    page_icon="⚡",
+    layout="wide",
+)
+
+# --- Sidebar Inputs ---
 with st.sidebar:
     st.header("⚙️ Analysis Settings")
 
-    uploaded_file = st.file_uploader("📁 Upload CSV (Garmin/Stryd export)", type=["csv"])
-
+    # --- File Upload Section ---
+    st.subheader("📁 Upload CSV")
+    uploaded_file = st.file_uploader(
+        "Select your activity file (CSV export from Garmin/Stryd)", type=["csv"]
+    )
+    
+     # --- Stryd weight Section ---
     stryd_weight = st.number_input(
         "⚖️ Stryd Weight (kg)",
         min_value=40.0,
         max_value=120.0,
         value=76.0,
         step=0.1,
-        help="Your body weight used by Stryd to calculate running power.",
-    )
+        help="Your body weight used by Stryd to calculate running power."
+    )   
 
+    # --- Choose Analysis Type ---
     test_choice = st.radio(
         "Choose Analysis Type",
-        ["Critical Power Test (3/12)", "5K Test", "Power Duration Curve"],
-        index=0,
+        ["Critical Power Test", "5K Test", "Segment Analysis"],
+        index=2,
     )
 
-    if test_choice == "Power Duration Curve":
-        st.subheader("PDC Settings")
-        max_dur = st.slider("Max Duration (s)", 60, 7200, 3600, 30)
-        pdc_res = st.radio("Curve point resolution", ["Every 1s", "Every 5s"], index=1, horizontal=True)
-        pdc_step = 1 if pdc_res == "Every 1s" else 5
-        st.subheader("Stable Block Settings")
-        max_std = st.slider("Power Variability Threshold (%)", 2, 10, 5) / 100.0
-        min_block = st.slider("Min Block Duration (s)", 10, 600, 60, 5)
-        smooth_window = st.slider("Smoothing Window (s)", 1, 15, 5)
+    # --- Segment Analysis Section ---
+    with st.expander("📊 Segment Detection", expanded=(test_choice == "Segment Analysis")):
+        if test_choice == "Segment Analysis":
+            sensitivity = st.radio(
+                "Detection Sensitivity",
+                ["Low", "Medium", "High"],
+                index=1,
+                help="Higher = more sensitive to effort changes."
+            )
+
+            # Presets
+            if sensitivity == "Low":
+                smooth_window, max_std, allowed_spike = 8, 0.06, 8
+            elif sensitivity == "High":
+                smooth_window, max_std, allowed_spike = 4, 0.035, 3
+            else:
+                smooth_window, max_std, allowed_spike = 6, 0.045, 5
+
+            # Advanced (optional)
+            with st.expander("⚙️ Advanced", expanded=False):
+                smooth_window = st.slider("📈 Smoothing Window (sec)", 1, 15, smooth_window)
+                max_std = st.slider("📊 Power Variability Threshold (%)", 2, 10, int(max_std * 100)) / 100
+                allowed_spike = st.slider("⚠️ Allowed Spike Duration (sec)", 0, 30, allowed_spike,
+                                          help="Max consecutive seconds outside stability before a segment ends.")
+
+
 
     st.markdown("---")
     run_analysis = st.button("🚀 Run Analysis")
 
+# --- Main Screen ---
 if run_analysis:
+    # --- Validation ---
     if uploaded_file is None:
         st.warning("Please upload a CSV file before running the analysis.")
         st.stop()
-
-    file_hash = hashlib.md5(uploaded_file.getvalue()).hexdigest()
-    df = load_csv_cached(uploaded_file.getvalue())
-
-    if "power_wkg" in df.columns:
-        df["power"] = df["power_wkg"] * stryd_weight
-    elif "power" not in df.columns:
-        st.error("No valid power column found in file.")
+    if stryd_weight is None or stryd_weight <= 0:
+        st.warning("Please enter your Stryd weight before running the analysis.")
         st.stop()
 
-    if "timestamp" not in df.columns:
-        time_col = next((c for c in df.columns if "time" in c), None)
-        if time_col:
-            df["timestamp"] = pd.to_datetime(df[time_col], unit="s", errors="coerce")
-        else:
-            st.error("Timestamp column not found.")
-            st.stop()
+    # --- Load and prepare data ---
+    df = load_csv_auto(uploaded_file)
 
+    # --- Normalize key columns for consistent naming ---
+    df.columns = [c.strip().lower() for c in df.columns]
+
+    # Normalize power column
+    if "power (w)" in df.columns:
+        df.rename(columns={"power (w)": "power"}, inplace=True)
+    elif "power (w/kg)" in df.columns:
+        df.rename(columns={"power (w/kg)": "power_wkg"}, inplace=True)
+
+    # Normalize time column (only if not already timestamp)
+    time_col = next((c for c in df.columns if "time" in c and "stamp" not in c), None)
+    if time_col and "timestamp" not in df.columns:
+        df["timestamp"] = pd.to_datetime(df[time_col], unit="s", errors="coerce")
+
+    # Normalize distance column for all tests
+    dist_candidates = [
+        "watch distance (meters)",
+        "distance (m)",
+        "distance",
+        "stryd distance (m)",
+    ]
+    for candidate in dist_candidates:
+        if candidate in df.columns:
+            df.rename(columns={candidate: "watch distance (meters)"}, inplace=True)
+            break
+
+    # If no valid distance found, try to infer one (fill with 0)
     if "watch distance (meters)" not in df.columns:
         df["watch distance (meters)"] = 0
 
+    time_col = [c for c in df.columns if "time" in c.lower()][0]
+    df["timestamp"] = pd.to_datetime(df[time_col], unit="s", errors="coerce")
+    df = df.dropna(subset=["timestamp"])
+
+    power_col = [c for c in df.columns if "power" in c.lower()][0]
+    df["power"] = df[power_col]
+
+    if "w/kg" in power_col.lower():
+        df["power"] = df["power"] * stryd_weight
+
     df = df.sort_values("timestamp").reset_index(drop=True)
 
+    # --- Analysis Results ---
     st.markdown("## 📊 Analysis Results")
 
+    # ==============================================================
+    # 3/12-Minute Critical Power Test
+    # ==============================================================
     if "3/12" in test_choice:
         best3, s3, e3 = best_avg_power(df, 180)
         best12, s12, e12 = best_avg_power(df, 720)
@@ -163,84 +188,50 @@ if run_analysis:
         ext12 = extend_best_segment(df, s12, e12, best12)
         cp, w_prime = compute_cp_linear(ext3[0], 180, ext12[0], 720)
 
-        df["dist"] = pd.to_numeric(df["watch distance (meters)"], errors="coerce").ffill()
-        dist3 = df.loc[ext3[2], "dist"] - df.loc[ext3[1], "dist"]
-        dist12 = df.loc[ext12[2], "dist"] - df.loc[ext12[1], "dist"]
+        # --- Helper for distance column ---
+        dist_col = None
+        for c in df.columns:
+            if "watch distance" in c.lower() or "stryd distance" in c.lower():
+                dist_col = c
+                break
+
+        # --- Segment 3 min ---
+        if dist_col:
+            df["dist"] = pd.to_numeric(df[dist_col], errors="coerce").ffill()
+            dist3 = df.loc[ext3[2], "dist"] - df.loc[ext3[1], "dist"]
+        else:
+            dist3 = np.nan
 
         dur3 = int(ext3[3])
-        dur12 = int(ext12[3])
-        pace3 = timedelta(seconds=int(dur3 / (dist3 / 1000))) if dist3 > 0 else None
-        pace12 = timedelta(seconds=int(dur12 / (dist12 / 1000))) if dist12 > 0 else None
+        pace3 = timedelta(seconds=int(dur3 / (dist3 / 1000))) if pd.notna(dist3) and dist3 > 0 else None
 
+        # --- Segment 12 min ---
+        if dist_col:
+            dist12 = df.loc[ext12[2], "dist"] - df.loc[ext12[1], "dist"]
+        else:
+            dist12 = np.nan
+
+        dur12 = int(ext12[3])
+        pace12 = timedelta(seconds=int(dur12 / (dist12 / 1000))) if pd.notna(dist12) and dist12 > 0 else None
+
+        # --- Display unified segment table ---
         st.subheader("Segment Details")
         seg_data = {
             "Segment": ["3-minute", "12-minute"],
-            "Distance (m)": [f"{dist3:.0f}", f"{dist12:.0f}"],
+            "Distance (m)": [f"{dist3:.0f}" if pd.notna(dist3) else "–", f"{dist12:.0f}" if pd.notna(dist12) else "–"],
             "Duration": [str(timedelta(seconds=dur3)), str(timedelta(seconds=dur12))],
             "Pace (/km)": [str(pace3) if pace3 else "–", str(pace12) if pace12 else "–"],
             "Avg Power (W)": [f"{ext3[0]:.1f}", f"{ext12[0]:.1f}"],
         }
-        st.dataframe(pd.DataFrame(seg_data), use_container_width=True)
+        st.dataframe(pd.DataFrame(seg_data), width='stretch')
 
-        show_result_card("Critical Power (3/12 Test)", f"{cp:.1f} W", f"W′ = {w_prime/1000:.2f} kJ", color="#1a73e8")
-        # ----- CP-derived power zones & Individual Interval Targets -----
-        st.markdown("### 🧭 Power Zones & Individual Interval Targets")
-
-        def _zones_from_cp(cp_val: float):
-            bands = [
-                ("Z1 • Endurance", 0.65, 0.80),
-                ("Z2 • Moderate", 0.80, 0.90),
-                ("Z3 • Threshold", 0.90, 1.00),
-                ("Z4 • Interval", 1.00, 1.15),
-                ("Z5 • Anaerobic", 1.15, 1.35),
-            ]
-            rows = []
-            for name, lo, hi in bands:
-                rows.append({
-                    "Zone": name,
-                    "Range (W)": f"{cp_val*lo:.0f} – {cp_val*hi:.0f}",
-                    "% of CP": f"{int(lo*100)}–{int(hi*100)}%",
-                })
-            return pd.DataFrame(rows)
-
-        zdf = _zones_from_cp(cp)
-        st.dataframe(zdf, use_container_width=True, hide_index=True)
-
-        with st.expander("⚙️ Interval Target Calculator (CP/W′ model)"):
-            colA, colB, colC, colD = st.columns(4)
-            with colA:
-                rep_dur = st.number_input("Rep duration (s)", min_value=20, max_value=1800, value=180, step=5)
-            with colB:
-                frac_dep = st.slider("W′ depletion per rep (%)", 5, 40, 20, help="What fraction of W′ to spend each rep.")
-            with colC:
-                reps = st.number_input("Reps", min_value=1, max_value=40, value=6, step=1)
-            with colD:
-                rec_dur = st.number_input("Recovery (s)", min_value=15, max_value=600, value=120, step=5)
-
-            frac = frac_dep / 100.0
-            target_power = cp + (frac * w_prime) / max(1, rep_dur)
-            tte_at_target = (w_prime / max(1e-6, (target_power - cp)))
-            total_wprime_used = frac * w_prime * reps
-
-            it_tbl = pd.DataFrame([{
-                "CP (W)": f"{cp:.0f}",
-                "W′ (J)": f"{w_prime:.0f}",
-                "Rep (s)": f"{int(rep_dur)}",
-                "Target Power (W)": f"{target_power:.0f}",
-                "Model TTE at Target": str(timedelta(seconds=int(tte_at_target))),
-                "Total W′ Used": f"{total_wprime_used/1000:.2f} kJ ({int(frac*100)}% × {reps})",
-            }])
-            st.dataframe(it_tbl, use_container_width=True, hide_index=True)
-
-            notes = []
-            if target_power < cp:
-                notes.append("Target is below CP (adjust inputs).")
-            if total_wprime_used > 1.05 * w_prime:
-                notes.append("Plan spends >100% of W′ in total — ensure recovery is sufficient.")
-            if rep_dur > tte_at_target * 1.1:
-                notes.append("Rep duration exceeds model TTE at target — reduce power or duration.")
-            if notes:
-                st.caption(" • ".join(notes))
+        # --- Display computed CP/W' ---
+        show_result_card(
+            "Critical Power (3/12 Test)",
+            f"{cp:.1f} W",
+            f"W′ = {w_prime/1000:.2f} kJ",
+            color="#1a73e8"  # blue accent
+        )
 
 
     elif "5K" in test_choice:
@@ -249,10 +240,22 @@ if run_analysis:
         t5k = int(ext5k[3])
         avg_pow = ext5k[0]
 
-        df["dist"] = pd.to_numeric(df["watch distance (meters)"], errors="coerce").ffill()
-        actual_distance = df.loc[ext5k[2], "dist"] - df.loc[ext5k[1], "dist"]
+        # --- Determine distance column ---
+        dist_col = None
+        for c in df.columns:
+            if "watch distance" in c.lower() or "stryd distance" in c.lower():
+                dist_col = c
+                break
+
+        if dist_col:
+            df["dist"] = pd.to_numeric(df[dist_col], errors="coerce").ffill()
+            actual_distance = df.loc[ext5k[2], "dist"] - df.loc[ext5k[1], "dist"]
+        else:
+            actual_distance = 5000
+
         pace_per_km = timedelta(seconds=int(t5k / (actual_distance / 1000)))
 
+        # --- Segment details table ---
         st.subheader("Segment Details")
         seg_data = {
             "Segment": ["5 km Time Trial"],
@@ -261,107 +264,149 @@ if run_analysis:
             "Pace (/km)": [str(pace_per_km)],
             "Avg Power (W)": [f"{avg_pow:.1f}"],
         }
-        st.dataframe(pd.DataFrame(seg_data), use_container_width=True)
+        st.dataframe(pd.DataFrame(seg_data), width='stretch')
 
+        # --- Critical Power estimate across fatigue profiles (empirical model) ---
         cp_results = compute_cp_5k_range(avg_pow)
-        cp_table = pd.DataFrame({
-            "Profile": ["Aerobic", "Balanced", "Anaerobic"],
-            "CP (W)": [f"{cp:.1f}" for cp in cp_results.values()],
-            "Scaling": ["98.5%", "97.5%", "96.5%"],
-            "Trait": ["Endurance-focused", "Typical distance runner", "Power-focused"],
-        })
 
         st.subheader("Critical Power Profiles")
-        st.dataframe(cp_table, use_container_width=True, hide_index=True)
+        st.markdown("""
+        Each profile represents a different **fatigue characteristic**.  
+        Choose the one that best matches your physiology:
+        """)
 
-        cp_min, cp_max, cp_mid = min(cp_results.values()), max(cp_results.values()), list(cp_results.values())[1]
-        show_result_card("Estimated Critical Power Range (5K Time Trial)", f"{cp_min:.1f} – {cp_max:.1f} W", f"Typical profile ≈ {cp_mid:.1f} W", color="#ff8800")
+        # Compact, clean table
+        cp_table = pd.DataFrame(
+            {
+                "Profile": ["Aerobic", "Balanced", "Anaerobic"],
+                "CP (W)": [f"{cp:.1f}" for cp in cp_results.values()],
+                "Scaling": ["98.5%", "97.5%", "96.5%"],
+                "Trait": [
+                    "Endurance-focused",
+                    "Typical distance runner",
+                    "Power-focused",
+                ],
+            }
+        )
 
-    elif "Power Duration Curve" in test_choice:
-        # PDC via cache (per 1s or per 5s)
-        pdc_df = compute_pdc_cached(file_hash=file_hash, max_dur=max_dur, pdc_step=pdc_step, power_series=df["power"])
-        pdc_df["duration_label"] = [fmt_sec_hms(s) for s in pdc_df["duration_s"]]
+        st.dataframe(cp_table, width='stretch', hide_index=True)
 
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=pdc_df["duration_s"], y=pdc_df["best_power_w"], mode="lines+markers", name="PDC",
-            customdata=pdc_df["duration_label"],
-            hovertemplate="Duration: %{customdata}<br>Power: %{y:.1f} W<extra></extra>"
-        ))
+        # Range summary
+        cp_min = min(cp_results.values())
+        cp_max = max(cp_results.values())
+        cp_mid = list(cp_results.values())[1]  # Balanced profile
 
-        max_x = int(pdc_df["duration_s"].max()) if len(pdc_df) else 3600
-        base_ticks = [0, 5, 10, 15, 30, 45, 60, 120, 180, 300, 600, 900, 1200, 1800, 3600, 5400, 7200, 10800, 14400]
-        tickvals = [t for t in base_ticks if t <= max_x]
-        ticktext = [fmt_short_axis(t) for t in tickvals]
+        show_result_card(
+            "Estimated Critical Power Range (5K Time Trial)",
+            f"{cp_min:.1f} – {cp_max:.1f} W",
+            f"Typical profile ≈ {cp_mid:.1f} W",
+            color="#ff8800"  # orange accent
+        )
+        
+    # ==============================================================
+    # Segment Analysis (Running Effectiveness)
+    # ==============================================================
+    elif "Segment Analysis" in test_choice:
+        segments = detect_stable_segments_rolling(
+            df,
+            max_std_ratio=max_std,
+            smooth_window_sec=smooth_window,
+            allowed_spike_sec=allowed_spike,
+        )
 
-        fig.update_layout(title="Power Duration Curve", xaxis_title="Duration", yaxis_title="Best Average Power (W)",
-                          xaxis_type="linear", template="plotly_white", height=420, margin=dict(t=60, r=20, l=50, b=60))
-        fig.update_xaxes(tickmode="array", tickvals=tickvals, ticktext=ticktext, range=[0, max_x])
-        st.plotly_chart(fig, use_container_width=True)
+        def merge_adjacent_segments(segments, max_gap_sec=5, max_avg_diff_pct=0.02):
+            if not segments:
+                return segments, []
+            merged = []
+            combos = []  # to remember which were merged (indices)
+            current = segments[0].copy()
+            bucket = [0]
 
-        # Stable blocks via cache
-        blocks = detect_stable_blocks_cached(file_hash=file_hash, max_std=max_std, min_block=min_block, smooth_window=smooth_window, stryd_weight=float(stryd_weight) if stryd_weight else None, df=df)
+            for idx in range(1, len(segments)):
+                s = segments[idx]
+                gap = s["start_elapsed"] - current["end_elapsed"]
+                avg_diff = abs(s["avg_power"] - current["avg_power"]) / max(current["avg_power"], 1e-6)
 
-        if not blocks:
-            st.info("No stable blocks found with the current settings.")
-        else:
-            tbl = pd.DataFrame([
-                {
-                    "Duration": str(timedelta(seconds=int(b["duration_s"]))),
-                    "Avg Power (W)": f"{b['avg_power']:.1f}",
-                    "Distance (m)": f"{b['distance_m']:.0f}",
-                    "Pace (/km)": fmt_pace_mmss(b["pace_per_km"]) if b["pace_per_km"] else "–",
-                    "RE": f"{b['RE']:.3f}" if b.get("RE") else "–",
-                }
-                for b in blocks
-            ])
-            tbl.reset_index(drop=True, inplace=True)
-            tbl.index.name = "Block"
+                if gap <= max_gap_sec and avg_diff <= max_avg_diff_pct:
+                    # merge s into current
+                    total_dur = current["duration_s"] + gap + s["duration_s"]
+                    # duration-weighted average power
+                    w_avg = (
+                        current["avg_power"] * current["duration_s"] +
+                        s["avg_power"] * s["duration_s"]
+                    ) / total_dur
 
-            st.subheader("Stable Blocks")
-            st.dataframe(tbl, use_container_width=True)
-
-            # Overlay (linear axis)
-            ts = df["timestamp"]
-            if pd.api.types.is_datetime64_any_dtype(ts):
-                elapsed_s = (ts - ts.iloc[0]).dt.total_seconds()
-            else:
-                ts_num = pd.to_numeric(ts, errors="coerce")
-                if ts_num.notna().any():
-                    elapsed_s = ts_num - float(ts_num.iloc[0])
+                    current.update({
+                        "end_idx": s["end_idx"],
+                        "end_elapsed": s["end_elapsed"],
+                        "duration_s": total_dur,
+                        "avg_power": w_avg,
+                        "min_power": min(current["min_power"], s["min_power"]),
+                        "max_power": max(current["max_power"], s["max_power"]),
+                        "distance_m": current["distance_m"] + s["distance_m"],
+                        "pace_per_km": (current["pace_per_km"] + s["pace_per_km"]) / 2 if current["pace_per_km"] and s["pace_per_km"] else current["pace_per_km"] or s["pace_per_km"],
+                        "end_reason": "merged",
+                    })
+                    bucket.append(idx)
                 else:
-                    elapsed_s = pd.Series(range(len(df)), index=df.index, dtype=float)
-            elapsed_s = (elapsed_s - float(elapsed_s.min())).astype(float)
+                    merged.append(current)
+                    combos.append(bucket)
+                    current = s.copy()
+                    bucket = [idx]
 
-            smooth_power_series = df["power"].rolling(window=max(1, smooth_window), min_periods=1).mean()
+            merged.append(current)
+            combos.append(bucket)
+            return merged, combos
 
-            fig2 = go.Figure()
-            fig2.add_trace(go.Scatter(x=elapsed_s, y=df["power"], mode="lines", name="Power (W)", opacity=0.35))
-            fig2.add_trace(go.Scatter(x=elapsed_s, y=smooth_power_series, mode="lines", name=f"Smoothed ({smooth_window}s)"))
 
-            palette = ["LightGreen", "LightSkyBlue", "LightSalmon", "Khaki", "Plum", "LightPink", "PaleTurquoise", "Wheat"]
-            shapes = []
-            annotations = []
-            for idx, b in enumerate(blocks):  # 0-based to match table index
-                x0 = float(elapsed_s.iloc[b["start_idx"]])
-                x1 = float(elapsed_s.iloc[b["end_idx"]])
-                shapes.append({"type": "rect", "xref": "x", "yref": "paper", "x0": x0, "x1": x1, "y0": 0, "y1": 1, "fillcolor": palette[idx % len(palette)], "opacity": 0.25, "line": {"width": 0}})
-                annotations.append(dict(x=(x0 + x1) / 2, y=1.01, xref="x", yref="paper", text=f"{idx}", showarrow=False, font=dict(size=12), align="center"))
+        segments_merged, merged_groups = merge_adjacent_segments(segments, max_gap_sec=5, max_avg_diff_pct=0.02)
 
-            max_x = float(elapsed_s.max()) if len(elapsed_s) else 3600
-            base_ticks = [0, 5, 10, 15, 30, 45, 60, 120, 180, 300, 600, 900, 1200, 1800, 3600, 5400, 7200, 10800, 14400]
-            tickvals = [t for t in base_ticks if t <= max_x]
-            ticktext = [fmt_short_axis(int(t)) for t in tickvals] if tickvals else None
+        segments_display = segments_merged  # show merged segments
 
-            fig2.update_layout(title="Power over Time (Stable Blocks)", xaxis_title="Elapsed Time", yaxis_title="Power (W)",
-                               template="plotly_white", height=460, shapes=shapes, annotations=annotations,
-                               legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                               margin=dict(t=60, r=20, l=50, b=60))
-            fig2.update_xaxes(type="linear", tickmode="array", tickvals=tickvals, ticktext=ticktext, range=[0, max_x])
+        if not segments_display:
+            st.warning("No stable segments found with the current settings.")
+            st.stop()
 
-            st.plotly_chart(fig2, use_container_width=True)
+        # Compute Running Effectiveness for each segment (needs stryd_weight)
+        for seg in segments_display:
+            seg["RE"] = running_effectiveness(
+                seg["distance_m"], seg["duration_s"], seg["avg_power"], stryd_weight
+            )
 
-            st.caption(f"Cache key → file={file_hash[:8]} • PDC step={pdc_step}s • blocks: std≤{int(max_std*100)}% • min={min_block}s • smooth={smooth_window}s")
+        seg_df = pd.DataFrame([
+            {
+                "Start": str(timedelta(seconds=int(seg["start_elapsed"]))),
+                "End": str(timedelta(seconds=int(seg["end_elapsed"]))),
+                "Duration": str(timedelta(seconds=int(seg["duration_s"]))),
+                "Min Power (W)": f"{seg['min_power']:.1f}",
+                "Avg Power (W)": f"{seg['avg_power']:.1f}",
+                "Max Power (W)": f"{seg['max_power']:.1f}",
+                "CV %": f"{seg['cv_%']:.2f}" if seg.get("cv_%") is not None else "–",
+                "Distance (m)": f"{seg['distance_m']:.0f}",
+                "Pace (/km)": (
+                    str(timedelta(seconds=int(seg["pace_per_km"])))
+                    if seg["pace_per_km"] else "–"
+                ),
+                "RE": f"{seg['RE']:.3f}" if seg["RE"] else "–",
+                "End Reason": seg.get("end_reason", "–"),
+            }
+            for seg in segments_display
+        ])
+
+
+        st.subheader("Detected Segments")
+        st.dataframe(seg_df, width="stretch")
+
+        avg_re = np.nanmean([seg.get("RE") for seg in segments_display if seg.get("RE") is not None])
+        show_result_card(
+            "Running Effectiveness (test total)",
+            f"{RE:.3f}" if RE else "–",
+            "Typical values: 0.98–1.05",
+            color="#16a34a"
+        )
+
+
+
 
 st.markdown("---")
 render_documentation()
