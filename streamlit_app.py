@@ -313,7 +313,6 @@ if run_analysis:
                 annotations=annotations,
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             ),
-            )
 
             st.plotly_chart(fig2, use_container_width=True)
 
