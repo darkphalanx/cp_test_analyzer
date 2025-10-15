@@ -69,7 +69,9 @@ with st.sidebar:
     if test_choice == "Power Duration Curve":
         st.subheader("PDC Settings")
         max_dur = st.slider("Max Duration (s)", 60, 7200, 3600, 30)
-        pdc_points = st.slider("Curve Points", 20, 120, 60, 5)
+        # Resolution selector: per 1s or 5s
+        pdc_res = st.radio("Curve point resolution", ["Every 1s", "Every 5s"], index=0, horizontal=True)
+        pdc_step = 1 if pdc_res == "Every 1s" else 5
         st.subheader("Stable Block Settings")
         max_std = st.slider("Power Variability Threshold (%)", 2, 10, 5) / 100.0
         min_block = st.slider("Min Block Duration (s)", 10, 600, 60, 5)
@@ -188,7 +190,16 @@ if run_analysis:
     # ------------------- Power Duration Curve & Stable Blocks ------------------- #
     elif "Power Duration Curve" in test_choice:
         # PDC
-        pdc_df = compute_power_duration_curve(df, max_duration_s=max_dur, points=pdc_points)
+        # Build PDC either per-second or per-5s using linear durations
+        import numpy as np
+        durations = np.arange(5, max_dur + 1, pdc_step, dtype=int)
+        # compute best rolling mean for each duration
+        pows = []
+        for d in durations:
+            rm = df["power"].rolling(d, min_periods=d).mean()
+            m = float(rm.max()) if rm.notna().any() else np.nan
+            pows.append(m)
+        pdc_df = pd.DataFrame({"duration_s": durations, "best_power_w": pows}).dropna()
 
         # Human-readable duration labels (mm:ss or hh:mm:ss)
         def _fmt_sec_to_label(total_s: int) -> str:
@@ -230,11 +241,13 @@ if run_analysis:
             title="Power Duration Curve",
             xaxis_title="Duration",
             yaxis_title="Best Average Power (W)",
-            xaxis_type="log",
+            # linear axis fits the per-1s/5s resolution nicely; switch to log if desired later
+            xaxis_type="linear",
             template="plotly_white",
             height=420,
+            margin=dict(t=60, r=20, l=50, b=60),
         )
-        fig.update_xaxes(tickmode="array", tickvals=tickvals, ticktext=ticktext)
+        fig.update_xaxes(tickmode="array", tickvals=tickvals, ticktext=ticktext, range=[0, max_x])
 
         st.plotly_chart(fig, use_container_width=True)
 
@@ -275,9 +288,8 @@ if run_analysis:
                     elapsed_s = ts_num - float(ts_num.iloc[0])
                 else:
                     elapsed_s = pd.Series(range(len(df)), index=df.index, dtype=float)
-            # ensure strictly positive for log axis
-            elapsed_s = elapsed_s.astype(float)
-            elapsed_s = elapsed_s - float(elapsed_s.min()) + 1.0
+            # start at 0 (linear axis)
+            elapsed_s = (elapsed_s - float(elapsed_s.min())).astype(float)
 
             smooth_power_series = df["power"].rolling(window=max(1, smooth_window), min_periods=1).mean()
 
@@ -315,9 +327,9 @@ if run_analysis:
                     align="center",
                 ))
 
-            # Dynamic tick labels (same style as PDC)
+            # Dynamic tick labels (linear, same style as PDC)
             max_x = float(elapsed_s.max()) if len(elapsed_s) else 3600
-            base_ticks = [5, 10, 15, 30, 45, 60, 120, 180, 300, 600, 900, 1200, 1800, 3600, 5400, 7200, 10800, 14400]
+            base_ticks = [0, 5, 10, 15, 30, 45, 60, 120, 180, 300, 600, 900, 1200, 1800, 3600, 5400, 7200, 10800, 14400]
             tickvals = [t for t in base_ticks if t <= max_x]
             def _fmt_short(sec: int) -> str:
                 if sec < 60:
@@ -333,15 +345,14 @@ if run_analysis:
                 title="Power over Time (Stable Blocks)",
                 xaxis_title="Elapsed Time",
                 yaxis_title="Power (W)",
-                xaxis_type="log",
                 template="plotly_white",
                 height=460,
                 shapes=shapes,
                 annotations=annotations,
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                margin=dict(t=60, r=20, l=50, b=60),
             )
-            if ticktext is not None:
-                fig2.update_xaxes(tickmode="array", tickvals=tickvals, ticktext=ticktext)
+            fig2.update_xaxes(type="linear", tickmode="array", tickvals=tickvals, ticktext=ticktext, range=[0, max_x])
 
             st.plotly_chart(fig2, use_container_width=True)
 
