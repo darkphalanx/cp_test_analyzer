@@ -191,12 +191,12 @@ if run_analysis:
         pdc_df = compute_power_duration_curve(df, max_duration_s=max_dur, points=pdc_points)
 
         # Human-readable duration labels (mm:ss or hh:mm:ss)
-        def _fmt_sec_to_label(total_s:int):
+        def _fmt_sec_to_label(total_s: int) -> str:
             total_s = int(total_s)
             m, s = divmod(total_s, 60)
             h, m = divmod(m, 60)
             return f"{h:d}:{m:02d}:{s:02d}" if h > 0 else f"{m:d}:{s:02d}"
-        pdc_df["duration_label"] = [ _fmt_sec_to_label(s) for s in pdc_df["duration_s"] ]
+        pdc_df["duration_label"] = [_fmt_sec_to_label(s) for s in pdc_df["duration_s"]]
 
         fig = go.Figure()
         fig.add_trace(
@@ -209,12 +209,12 @@ if run_analysis:
                 hovertemplate="Duration: %{customdata}<br>Power: %{y:.1f} W<extra></extra>",
             )
         )
+
         # Dynamic tick labels for durations
         max_x = int(pdc_df["duration_s"].max()) if len(pdc_df) else 3600
-        base_ticks = [5, 10, 15, 30, 45,
-                      60, 120, 180, 300, 600, 900, 1200, 1800,
-                      3600, 5400, 7200, 10800, 14400]
+        base_ticks = [5, 10, 15, 30, 45, 60, 120, 180, 300, 600, 900, 1200, 1800, 3600, 5400, 7200, 10800, 14400]
         tickvals = [t for t in base_ticks if t <= max_x]
+
         def _fmt_short(sec: int) -> str:
             if sec < 60:
                 return f"{sec}s"
@@ -223,6 +223,7 @@ if run_analysis:
                 return f"{m}m" if s == 0 else f"{m}m{s:02d}s"
             h, m = divmod(m, 60)
             return f"{h}h" if m == 0 else f"{h}h{m:02d}m"
+
         ticktext = [_fmt_short(t) for t in tickvals]
 
         fig.update_layout(
@@ -234,6 +235,7 @@ if run_analysis:
             height=420,
         )
         fig.update_xaxes(tickmode="array", tickvals=tickvals, ticktext=ticktext)
+
         st.plotly_chart(fig, use_container_width=True)
 
         # Stable blocks
@@ -313,6 +315,7 @@ if run_analysis:
                 annotations=annotations,
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             ),
+            )
 
             st.plotly_chart(fig2, use_container_width=True)
 
