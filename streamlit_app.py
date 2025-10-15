@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import timedelta
-from cp_utils import (
+from cp_utils_refactored import (
     load_csv_auto,
     best_avg_power,
     best_power_for_distance,
@@ -10,177 +10,117 @@ from cp_utils import (
     compute_cp_linear,
     compute_cp_5k_range,
     running_effectiveness,
-    detect_stable_segments_rolling,  # only current detection function
+    detect_stable_segments_rolling,
 )
 from docs import render_documentation
 
-# --- Helper: Styled Result Card ---
+# ============================================================
+#  UI Helper: Styled Result Card
+# ============================================================
+
 def show_result_card(title: str, main_value: str, subtext: str = "", color: str = "#0b5394"):
-    """
-    Display a stylized result card for key outcomes.
-    - title: main heading (e.g. "Critical Power (3/12 Test)")
-    - main_value: emphasized numeric result
-    - subtext: secondary info (e.g. W′)
-    - color: accent color for highlight (default = blue)
-    """
     st.markdown("---")
     st.markdown(
         f"""
         <div style="
             text-align:center;
             padding: 1.6rem;
-            background-color: #ffffff;  /* white card for contrast in dark/light mode */
+            background-color: #ffffff;
             border-radius: 10px;
             border: 2px solid #e0e0e0;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             margin-top: 1.5rem;
         ">
             <h2 style="color:{color}; margin-bottom:0.7rem;">🏁 {title}</h2>
-            <p style="
-                font-size:1.7rem;
-                font-weight:800;
-                color:{color};
-                margin:0;
-            ">
-                {main_value}
-            </p>
-            <p style="
-                font-size:1.15rem;
-                color:#333;
-                margin-top:0.4rem;
-            ">
-                {subtext}
-            </p>
+            <p style="font-size:1.7rem;font-weight:800;color:{color};margin:0;">{main_value}</p>
+            <p style="font-size:1.15rem;color:#333;margin-top:0.4rem;">{subtext}</p>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
+# ============================================================
+#  Streamlit Page Setup
+# ============================================================
 
-st.set_page_config(
-    page_title="Critical Power Analyzer",
-    page_icon="⚡",
-    layout="wide",
-)
+st.set_page_config(page_title="Critical Power Analyzer", page_icon="⚡", layout="wide")
 
-# --- Sidebar Inputs ---
 with st.sidebar:
     st.header("⚙️ Analysis Settings")
 
-    # --- File Upload Section ---
-    st.subheader("📁 Upload CSV")
-    uploaded_file = st.file_uploader(
-        "Select your activity file (CSV export from Garmin/Stryd)", type=["csv"]
-    )
-    
-     # --- Stryd weight Section ---
+    uploaded_file = st.file_uploader("📁 Upload CSV (Garmin/Stryd export)", type=["csv"])
+
     stryd_weight = st.number_input(
         "⚖️ Stryd Weight (kg)",
         min_value=40.0,
         max_value=120.0,
         value=76.0,
         step=0.1,
-        help="Your body weight used by Stryd to calculate running power."
-    )   
-
-    # --- Choose Analysis Type ---
-    test_choice = st.radio(
-        "Choose Analysis Type",
-        ["Critical Power Test", "5K Test", "Segment Analysis"],
-        index=2,
+        help="Your body weight used by Stryd to calculate running power.",
     )
 
-    # --- Segment Analysis Section ---
-    with st.expander("📊 Segment Detection", expanded=(test_choice == "Segment Analysis")):
-        if test_choice == "Segment Analysis":
-            sensitivity = st.radio(
-                "Detection Sensitivity",
-                ["Low", "Medium", "High"],
-                index=1,
-                help="Higher = more sensitive to effort changes."
-            )
+    test_choice = st.radio(
+        "Choose Analysis Type",
+        ["Critical Power Test (3/12)", "5K Test", "Segment Analysis"],
+        index=0,
+    )
 
-            # Presets
-            if sensitivity == "Low":
-                smooth_window, max_std, allowed_spike = 8, 0.06, 8
-            elif sensitivity == "High":
-                smooth_window, max_std, allowed_spike = 4, 0.035, 3
-            else:
-                smooth_window, max_std, allowed_spike = 6, 0.045, 5
+    if test_choice == "Segment Analysis":
+        sensitivity = st.radio("Detection Sensitivity", ["Low", "Medium", "High"], index=1)
+        if sensitivity == "Low":
+            smooth_window, max_std, allowed_spike = 8, 0.06, 8
+        elif sensitivity == "High":
+            smooth_window, max_std, allowed_spike = 4, 0.035, 3
+        else:
+            smooth_window, max_std, allowed_spike = 6, 0.045, 5
 
-            # Advanced (optional)
-            with st.expander("⚙️ Advanced", expanded=False):
-                smooth_window = st.slider("📈 Smoothing Window (sec)", 1, 15, smooth_window)
-                max_std = st.slider("📊 Power Variability Threshold (%)", 2, 10, int(max_std * 100)) / 100
-                allowed_spike = st.slider("⚠️ Allowed Spike Duration (sec)", 0, 30, allowed_spike,
-                                          help="Max consecutive seconds outside stability before a segment ends.")
-
-
+        with st.expander("⚙️ Advanced", expanded=False):
+            smooth_window = st.slider("📈 Smoothing Window (sec)", 1, 15, smooth_window)
+            max_std = st.slider("📊 Power Variability Threshold (%)", 2, 10, int(max_std * 100)) / 100
+            allowed_spike = st.slider("⚠️ Allowed Spike Duration (sec)", 0, 30, allowed_spike)
 
     st.markdown("---")
     run_analysis = st.button("🚀 Run Analysis")
 
-# --- Main Screen ---
+# ============================================================
+#  Data Loading and Normalization
+# ============================================================
+
 if run_analysis:
-    # --- Validation ---
     if uploaded_file is None:
         st.warning("Please upload a CSV file before running the analysis.")
         st.stop()
-    if stryd_weight is None or stryd_weight <= 0:
-        st.warning("Please enter your Stryd weight before running the analysis.")
-        st.stop()
 
-    # --- Load and prepare data ---
     df = load_csv_auto(uploaded_file)
 
-    # --- Normalize key columns for consistent naming ---
-    df.columns = [c.strip().lower() for c in df.columns]
+    # Handle power conversion if file contains w/kg
+    if "power_wkg" in df.columns:
+        df["power"] = df["power_wkg"] * stryd_weight
+    elif "power" not in df.columns:
+        st.error("No valid power column found in file.")
+        st.stop()
 
-    # Normalize power column
-    if "power (w)" in df.columns:
-        df.rename(columns={"power (w)": "power"}, inplace=True)
-    elif "power (w/kg)" in df.columns:
-        df.rename(columns={"power (w/kg)": "power_wkg"}, inplace=True)
+    if "timestamp" not in df.columns:
+        # Try to parse a numeric timestamp column
+        time_col = next((c for c in df.columns if "time" in c), None)
+        if time_col:
+            df["timestamp"] = pd.to_datetime(df[time_col], unit="s", errors="coerce")
+        else:
+            st.error("Timestamp column not found.")
+            st.stop()
 
-    # Normalize time column (only if not already timestamp)
-    time_col = next((c for c in df.columns if "time" in c and "stamp" not in c), None)
-    if time_col and "timestamp" not in df.columns:
-        df["timestamp"] = pd.to_datetime(df[time_col], unit="s", errors="coerce")
-
-    # Normalize distance column for all tests
-    dist_candidates = [
-        "watch distance (meters)",
-        "distance (m)",
-        "distance",
-        "stryd distance (m)",
-    ]
-    for candidate in dist_candidates:
-        if candidate in df.columns:
-            df.rename(columns={candidate: "watch distance (meters)"}, inplace=True)
-            break
-
-    # If no valid distance found, try to infer one (fill with 0)
     if "watch distance (meters)" not in df.columns:
         df["watch distance (meters)"] = 0
 
-    time_col = [c for c in df.columns if "time" in c.lower()][0]
-    df["timestamp"] = pd.to_datetime(df[time_col], unit="s", errors="coerce")
-    df = df.dropna(subset=["timestamp"])
-
-    power_col = [c for c in df.columns if "power" in c.lower()][0]
-    df["power"] = df[power_col]
-
-    if "w/kg" in power_col.lower():
-        df["power"] = df["power"] * stryd_weight
-
     df = df.sort_values("timestamp").reset_index(drop=True)
 
-    # --- Analysis Results ---
+    # ============================================================
+    #  Analysis Logic
+    # ============================================================
+
     st.markdown("## 📊 Analysis Results")
 
-    # ==============================================================
-    # 3/12-Minute Critical Power Test
-    # ==============================================================
+    # ------------------- 3/12-Minute Critical Power Test ------------------- #
     if "3/12" in test_choice:
         best3, s3, e3 = best_avg_power(df, 180)
         best12, s12, e12 = best_avg_power(df, 720)
@@ -188,76 +128,43 @@ if run_analysis:
         ext12 = extend_best_segment(df, s12, e12, best12)
         cp, w_prime = compute_cp_linear(ext3[0], 180, ext12[0], 720)
 
-        # --- Helper for distance column ---
-        dist_col = None
-        for c in df.columns:
-            if "watch distance" in c.lower() or "stryd distance" in c.lower():
-                dist_col = c
-                break
-
-        # --- Segment 3 min ---
-        if dist_col:
-            df["dist"] = pd.to_numeric(df[dist_col], errors="coerce").ffill()
-            dist3 = df.loc[ext3[2], "dist"] - df.loc[ext3[1], "dist"]
-        else:
-            dist3 = np.nan
+        df["dist"] = pd.to_numeric(df["watch distance (meters)"], errors="coerce").ffill()
+        dist3 = df.loc[ext3[2], "dist"] - df.loc[ext3[1], "dist"]
+        dist12 = df.loc[ext12[2], "dist"] - df.loc[ext12[1], "dist"]
 
         dur3 = int(ext3[3])
-        pace3 = timedelta(seconds=int(dur3 / (dist3 / 1000))) if pd.notna(dist3) and dist3 > 0 else None
-
-        # --- Segment 12 min ---
-        if dist_col:
-            dist12 = df.loc[ext12[2], "dist"] - df.loc[ext12[1], "dist"]
-        else:
-            dist12 = np.nan
-
         dur12 = int(ext12[3])
-        pace12 = timedelta(seconds=int(dur12 / (dist12 / 1000))) if pd.notna(dist12) and dist12 > 0 else None
+        pace3 = timedelta(seconds=int(dur3 / (dist3 / 1000))) if dist3 > 0 else None
+        pace12 = timedelta(seconds=int(dur12 / (dist12 / 1000))) if dist12 > 0 else None
 
-        # --- Display unified segment table ---
         st.subheader("Segment Details")
         seg_data = {
             "Segment": ["3-minute", "12-minute"],
-            "Distance (m)": [f"{dist3:.0f}" if pd.notna(dist3) else "–", f"{dist12:.0f}" if pd.notna(dist12) else "–"],
+            "Distance (m)": [f"{dist3:.0f}", f"{dist12:.0f}"],
             "Duration": [str(timedelta(seconds=dur3)), str(timedelta(seconds=dur12))],
             "Pace (/km)": [str(pace3) if pace3 else "–", str(pace12) if pace12 else "–"],
             "Avg Power (W)": [f"{ext3[0]:.1f}", f"{ext12[0]:.1f}"],
         }
-        st.dataframe(pd.DataFrame(seg_data), width='stretch')
+        st.dataframe(pd.DataFrame(seg_data), width="stretch")
 
-        # --- Display computed CP/W' ---
         show_result_card(
             "Critical Power (3/12 Test)",
             f"{cp:.1f} W",
             f"W′ = {w_prime/1000:.2f} kJ",
-            color="#1a73e8"  # blue accent
+            color="#1a73e8",
         )
 
-    # ==============================================================
-    # 5K Time Trial
-    # ==============================================================
+    # ------------------- 5K Time Trial ------------------- #
     elif "5K" in test_choice:
         best5k, s5k, e5k = best_power_for_distance(df, 5000)
         ext5k = extend_best_segment(df, s5k, e5k, best5k)
         t5k = int(ext5k[3])
         avg_pow = ext5k[0]
 
-        # --- Determine distance column ---
-        dist_col = None
-        for c in df.columns:
-            if "watch distance" in c.lower() or "stryd distance" in c.lower():
-                dist_col = c
-                break
-
-        if dist_col:
-            df["dist"] = pd.to_numeric(df[dist_col], errors="coerce").ffill()
-            actual_distance = df.loc[ext5k[2], "dist"] - df.loc[ext5k[1], "dist"]
-        else:
-            actual_distance = 5000
-
+        df["dist"] = pd.to_numeric(df["watch distance (meters)"], errors="coerce").ffill()
+        actual_distance = df.loc[ext5k[2], "dist"] - df.loc[ext5k[1], "dist"]
         pace_per_km = timedelta(seconds=int(t5k / (actual_distance / 1000)))
 
-        # --- Segment details table ---
         st.subheader("Segment Details")
         seg_data = {
             "Segment": ["5 km Time Trial"],
@@ -266,48 +173,28 @@ if run_analysis:
             "Pace (/km)": [str(pace_per_km)],
             "Avg Power (W)": [f"{avg_pow:.1f}"],
         }
-        st.dataframe(pd.DataFrame(seg_data), width='stretch')
+        st.dataframe(pd.DataFrame(seg_data), width="stretch")
 
-        # --- Critical Power estimate across fatigue profiles (empirical model) ---
         cp_results = compute_cp_5k_range(avg_pow)
+        cp_table = pd.DataFrame({
+            "Profile": ["Aerobic", "Balanced", "Anaerobic"],
+            "CP (W)": [f"{cp:.1f}" for cp in cp_results.values()],
+            "Scaling": ["98.5%", "97.5%", "96.5%"],
+            "Trait": ["Endurance-focused", "Typical distance runner", "Power-focused"],
+        })
 
         st.subheader("Critical Power Profiles")
-        st.markdown("""
-        Each profile represents a different **fatigue characteristic**.  
-        Choose the one that best matches your physiology:
-        """)
+        st.dataframe(cp_table, width="stretch", hide_index=True)
 
-        # Compact, clean table
-        cp_table = pd.DataFrame(
-            {
-                "Profile": ["Aerobic", "Balanced", "Anaerobic"],
-                "CP (W)": [f"{cp:.1f}" for cp in cp_results.values()],
-                "Scaling": ["98.5%", "97.5%", "96.5%"],
-                "Trait": [
-                    "Endurance-focused",
-                    "Typical distance runner",
-                    "Power-focused",
-                ],
-            }
-        )
-
-        st.dataframe(cp_table, width='stretch', hide_index=True)
-
-        # Range summary
-        cp_min = min(cp_results.values())
-        cp_max = max(cp_results.values())
-        cp_mid = list(cp_results.values())[1]  # Balanced profile
-
+        cp_min, cp_max, cp_mid = min(cp_results.values()), max(cp_results.values()), list(cp_results.values())[1]
         show_result_card(
             "Estimated Critical Power Range (5K Time Trial)",
             f"{cp_min:.1f} – {cp_max:.1f} W",
             f"Typical profile ≈ {cp_mid:.1f} W",
-            color="#ff8800"  # orange accent
+            color="#ff8800",
         )
-        
-    # ==============================================================
-    # Segment Analysis (Running Effectiveness)
-    # ==============================================================
+
+    # ------------------- Segment Analysis ------------------- #
     elif "Segment Analysis" in test_choice:
         segments = detect_stable_segments_rolling(
             df,
@@ -316,64 +203,12 @@ if run_analysis:
             allowed_spike_sec=allowed_spike,
         )
 
-        def merge_adjacent_segments(segments, max_gap_sec=5, max_avg_diff_pct=0.02):
-            if not segments:
-                return segments, []
-            merged = []
-            combos = []  # to remember which were merged (indices)
-            current = segments[0].copy()
-            bucket = [0]
-
-            for idx in range(1, len(segments)):
-                s = segments[idx]
-                gap = s["start_elapsed"] - current["end_elapsed"]
-                avg_diff = abs(s["avg_power"] - current["avg_power"]) / max(current["avg_power"], 1e-6)
-
-                if gap <= max_gap_sec and avg_diff <= max_avg_diff_pct:
-                    # merge s into current
-                    total_dur = current["duration_s"] + gap + s["duration_s"]
-                    # duration-weighted average power
-                    w_avg = (
-                        current["avg_power"] * current["duration_s"] +
-                        s["avg_power"] * s["duration_s"]
-                    ) / total_dur
-
-                    current.update({
-                        "end_idx": s["end_idx"],
-                        "end_elapsed": s["end_elapsed"],
-                        "duration_s": total_dur,
-                        "avg_power": w_avg,
-                        "min_power": min(current["min_power"], s["min_power"]),
-                        "max_power": max(current["max_power"], s["max_power"]),
-                        "distance_m": current["distance_m"] + s["distance_m"],
-                        "pace_per_km": (current["pace_per_km"] + s["pace_per_km"]) / 2 if current["pace_per_km"] and s["pace_per_km"] else current["pace_per_km"] or s["pace_per_km"],
-                        "end_reason": "merged",
-                    })
-                    bucket.append(idx)
-                else:
-                    merged.append(current)
-                    combos.append(bucket)
-                    current = s.copy()
-                    bucket = [idx]
-
-            merged.append(current)
-            combos.append(bucket)
-            return merged, combos
-
-
-        segments_merged, merged_groups = merge_adjacent_segments(segments, max_gap_sec=5, max_avg_diff_pct=0.02)
-
-        segments_display = segments_merged  # show merged segments
-
-        if not segments_display:
+        if not segments:
             st.warning("No stable segments found with the current settings.")
             st.stop()
 
-        # Compute Running Effectiveness for each segment (needs stryd_weight)
-        for seg in segments_display:
-            seg["RE"] = running_effectiveness(
-                seg["distance_m"], seg["duration_s"], seg["avg_power"], stryd_weight
-            )
+        for seg in segments:
+            seg["RE"] = running_effectiveness(seg["distance_m"], seg["duration_s"], seg["avg_power"], stryd_weight)
 
         seg_df = pd.DataFrame([
             {
@@ -385,30 +220,23 @@ if run_analysis:
                 "Max Power (W)": f"{seg['max_power']:.1f}",
                 "CV %": f"{seg['cv_%']:.2f}" if seg.get("cv_%") is not None else "–",
                 "Distance (m)": f"{seg['distance_m']:.0f}",
-                "Pace (/km)": (
-                    str(timedelta(seconds=int(seg["pace_per_km"])))
-                    if seg["pace_per_km"] else "–"
-                ),
+                "Pace (/km)": str(timedelta(seconds=int(seg["pace_per_km"]))) if seg["pace_per_km"] else "–",
                 "RE": f"{seg['RE']:.3f}" if seg["RE"] else "–",
                 "End Reason": seg.get("end_reason", "–"),
             }
-            for seg in segments_display
+            for seg in segments
         ])
-
 
         st.subheader("Detected Segments")
         st.dataframe(seg_df, width="stretch")
 
-        avg_re = np.nanmean([seg.get("RE") for seg in segments_display if seg.get("RE") is not None])
+        avg_re = np.nanmean([seg.get("RE") for seg in segments if seg.get("RE") is not None])
         show_result_card(
-            "Running Effectiveness (test total)",
-            f"{RE:.3f}" if RE else "–",
+            "Running Effectiveness (total)",
+            f"{avg_re:.3f}" if avg_re else "–",
             "Typical values: 0.98–1.05",
-            color="#16a34a"
+            color="#16a34a",
         )
-
-
-
 
 st.markdown("---")
 render_documentation()
