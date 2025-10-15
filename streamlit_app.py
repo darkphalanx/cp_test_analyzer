@@ -10,7 +10,6 @@ from cp_utils import (
     compute_cp_linear,
     compute_cp_5k_range,
     running_effectiveness,
-    detect_stable_segments_rolling,  # only current detection function
 )
 from docs import render_documentation
 
