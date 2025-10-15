@@ -183,6 +183,65 @@ if run_analysis:
         st.dataframe(pd.DataFrame(seg_data), use_container_width=True)
 
         show_result_card("Critical Power (3/12 Test)", f"{cp:.1f} W", f"W′ = {w_prime/1000:.2f} kJ", color="#1a73e8")
+        # ----- CP-derived power zones & Individual Interval Targets -----
+        st.markdown("### 🧭 Power Zones & Individual Interval Targets")
+
+        def _zones_from_cp(cp_val: float):
+            bands = [
+                ("Z1 • Endurance", 0.65, 0.80),
+                ("Z2 • Moderate", 0.80, 0.90),
+                ("Z3 • Threshold", 0.90, 1.00),
+                ("Z4 • Interval", 1.00, 1.15),
+                ("Z5 • Anaerobic", 1.15, 1.35),
+            ]
+            rows = []
+            for name, lo, hi in bands:
+                rows.append({
+                    "Zone": name,
+                    "Range (W)": f"{cp_val*lo:.0f} – {cp_val*hi:.0f}",
+                    "% of CP": f"{int(lo*100)}–{int(hi*100)}%",
+                })
+            return pd.DataFrame(rows)
+
+        zdf = _zones_from_cp(cp)
+        st.dataframe(zdf, use_container_width=True, hide_index=True)
+
+        with st.expander("⚙️ Interval Target Calculator (CP/W′ model)"):
+            colA, colB, colC, colD = st.columns(4)
+            with colA:
+                rep_dur = st.number_input("Rep duration (s)", min_value=20, max_value=1800, value=180, step=5)
+            with colB:
+                frac_dep = st.slider("W′ depletion per rep (%)", 5, 40, 20, help="What fraction of W′ to spend each rep.")
+            with colC:
+                reps = st.number_input("Reps", min_value=1, max_value=40, value=6, step=1)
+            with colD:
+                rec_dur = st.number_input("Recovery (s)", min_value=15, max_value=600, value=120, step=5)
+
+            frac = frac_dep / 100.0
+            target_power = cp + (frac * w_prime) / max(1, rep_dur)
+            tte_at_target = (w_prime / max(1e-6, (target_power - cp)))
+            total_wprime_used = frac * w_prime * reps
+
+            it_tbl = pd.DataFrame([{
+                "CP (W)": f"{cp:.0f}",
+                "W′ (J)": f"{w_prime:.0f}",
+                "Rep (s)": f"{int(rep_dur)}",
+                "Target Power (W)": f"{target_power:.0f}",
+                "Model TTE at Target": str(timedelta(seconds=int(tte_at_target))),
+                "Total W′ Used": f"{total_wprime_used/1000:.2f} kJ ({int(frac*100)}% × {reps})",
+            }])
+            st.dataframe(it_tbl, use_container_width=True, hide_index=True)
+
+            notes = []
+            if target_power < cp:
+                notes.append("Target is below CP (adjust inputs).")
+            if total_wprime_used > 1.05 * w_prime:
+                notes.append("Plan spends >100% of W′ in total — ensure recovery is sufficient.")
+            if rep_dur > tte_at_target * 1.1:
+                notes.append("Rep duration exceeds model TTE at target — reduce power or duration.")
+            if notes:
+                st.caption(" • ".join(notes))
+
 
     elif "5K" in test_choice:
         best5k, s5k, e5k = best_power_for_distance(df, 5000)
