@@ -8,8 +8,12 @@ from cp_utils import (
     extend_best_segment,
     compute_cp_linear,
     compute_cp_5k_range,
+    compute_power_duration_curve,
+    detect_stable_blocks,
+    running_effectiveness,
 )
 from docs import render_documentation
+import plotly.graph_objects as go
 
 # ============================================================
 #  UI Helper: Styled Result Card
@@ -58,9 +62,18 @@ with st.sidebar:
 
     test_choice = st.radio(
         "Choose Analysis Type",
-        ["Critical Power Test (3/12)", "5K Test"],
+        ["Critical Power Test (3/12)", "5K Test", "Power Duration Curve"],
         index=0,
     )
+
+    if test_choice == "Power Duration Curve":
+        st.subheader("PDC Settings")
+        max_dur = st.slider("Max Duration (s)", 60, 7200, 3600, 30)
+        pdc_points = st.slider("Curve Points", 20, 120, 60, 5)
+        st.subheader("Stable Block Settings")
+        max_std = st.slider("Power Variability Threshold (%)", 2, 10, 5) / 100.0
+        min_block = st.slider("Min Block Duration (s)", 10, 600, 60, 5)
+        smooth_window = st.slider("Smoothing Window (s)", 1, 15, 5)
 
     st.markdown("---")
     run_analysis = st.button("🚀 Run Analysis")
@@ -84,7 +97,6 @@ if run_analysis:
         st.stop()
 
     if "timestamp" not in df.columns:
-        # Try to parse a numeric timestamp column
         time_col = next((c for c in df.columns if "time" in c), None)
         if time_col:
             df["timestamp"] = pd.to_datetime(df[time_col], unit="s", errors="coerce")
@@ -96,10 +108,6 @@ if run_analysis:
         df["watch distance (meters)"] = 0
 
     df = df.sort_values("timestamp").reset_index(drop=True)
-
-    # ============================================================
-    #  Analysis Logic
-    # ============================================================
 
     st.markdown("## 📊 Analysis Results")
 
@@ -128,7 +136,7 @@ if run_analysis:
             "Pace (/km)": [str(pace3) if pace3 else "–", str(pace12) if pace12 else "–"],
             "Avg Power (W)": [f"{ext3[0]:.1f}", f"{ext12[0]:.1f}"],
         }
-        st.dataframe(pd.DataFrame(seg_data), width="stretch")
+        st.dataframe(pd.DataFrame(seg_data), use_container_width=True)
 
         show_result_card(
             "Critical Power (3/12 Test)",
@@ -156,7 +164,7 @@ if run_analysis:
             "Pace (/km)": [str(pace_per_km)],
             "Avg Power (W)": [f"{avg_pow:.1f}"],
         }
-        st.dataframe(pd.DataFrame(seg_data), width="stretch")
+        st.dataframe(pd.DataFrame(seg_data), use_container_width=True)
 
         cp_results = compute_cp_5k_range(avg_pow)
         cp_table = pd.DataFrame({
@@ -167,7 +175,7 @@ if run_analysis:
         })
 
         st.subheader("Critical Power Profiles")
-        st.dataframe(cp_table, width="stretch", hide_index=True)
+        st.dataframe(cp_table, use_container_width=True, hide_index=True)
 
         cp_min, cp_max, cp_mid = min(cp_results.values()), max(cp_results.values()), list(cp_results.values())[1]
         show_result_card(
@@ -177,5 +185,83 @@ if run_analysis:
             color="#ff8800",
         )
 
-st.markdown("---")
+    # ------------------- Power Duration Curve & Stable Blocks ------------------- #
+    elif "Power Duration Curve" in test_choice:
+        # PDC
+        pdc_df = compute_power_duration_curve(df, max_duration_s=max_dur, points=pdc_points)
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=pdc_df["duration_s"], y=pdc_df["best_power_w"], mode="lines+markers", name="PDC"))
+        fig.update_layout(
+            title="Power Duration Curve",
+            xaxis_title="Duration (s)",
+            yaxis_title="Best Average Power (W)",
+            xaxis_type="log",
+            template="plotly_white",
+            height=420,
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Stable blocks
+        blocks = detect_stable_blocks(
+            df,
+            max_std_ratio=max_std,
+            min_duration_sec=min_block,
+            smooth_window_sec=smooth_window,
+            weight_kg=float(stryd_weight) if stryd_weight else None,
+        )
+
+        if not blocks:
+            st.info("No stable blocks found with the current settings.")
+        else:
+            tbl = pd.DataFrame([
+                {
+                    "Start": str(timedelta(seconds=int(b["start_elapsed"]))),
+                    "End": str(timedelta(seconds=int(b["end_elapsed"]))),
+                    "Duration": str(timedelta(seconds=int(b["duration_s"]))),
+                    "Avg Power (W)": f"{b['avg_power']:.1f}",
+                    "Distance (m)": f"{b['distance_m']:.0f}",
+                    "Pace (/km)": str(timedelta(seconds=int(b["pace_per_km"]))) if b["pace_per_km"] else "–",
+                    "RE": f"{b['RE']:.3f}" if b.get("RE") else "–",
+                }
+                for b in blocks
+            ])
+            st.subheader("Stable Blocks")
+            st.dataframe(tbl, use_container_width=True)
+
+            # Visual overlay: power vs time with shaded stable blocks
+            smooth_power_series = df["power"].rolling(window=max(1, smooth_window), min_periods=1).mean()
+            fig2 = go.Figure()
+            fig2.add_trace(go.Scatter(x=df["timestamp"], y=df["power"], mode="lines", name="Power (W)", opacity=0.35))
+            fig2.add_trace(go.Scatter(x=df["timestamp"], y=smooth_power_series, mode="lines", name=f"Smoothed ({smooth_window}s)"))
+
+            shapes = []
+            for b in blocks:
+                x0 = df.loc[b["start_idx"], "timestamp"]
+                x1 = df.loc[b["end_idx"], "timestamp"]
+                shapes.append({
+                    "type": "rect",
+                    "xref": "x",
+                    "yref": "paper",
+                    "x0": x0,
+                    "x1": x1,
+                    "y0": 0,
+                    "y1": 1,
+                    "fillcolor": "LightGreen",
+                    "opacity": 0.25,
+                    "line": {"width": 0},
+                })
+
+            fig2.update_layout(
+                title="Power over Time (Stable Blocks shaded)",
+                xaxis_title="Time",
+                yaxis_title="Power (W)",
+                template="plotly_white",
+                height=460,
+                shapes=shapes,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            )
+
+            st.plotly_chart(fig2, use_container_width=True)
+
+    st.markdown("---")
 render_documentation()
