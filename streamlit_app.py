@@ -189,8 +189,26 @@ if run_analysis:
     elif "Power Duration Curve" in test_choice:
         # PDC
         pdc_df = compute_power_duration_curve(df, max_duration_s=max_dur, points=pdc_points)
+
+        # Human-readable duration labels (mm:ss or hh:mm:ss)
+        def _fmt_sec_to_label(total_s:int):
+            total_s = int(total_s)
+            m, s = divmod(total_s, 60)
+            h, m = divmod(m, 60)
+            return f"{h:d}:{m:02d}:{s:02d}" if h > 0 else f"{m:d}:{s:02d}"
+        pdc_df["duration_label"] = [ _fmt_sec_to_label(s) for s in pdc_df["duration_s"] ]
+
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=pdc_df["duration_s"], y=pdc_df["best_power_w"], mode="lines+markers", name="PDC"))
+        fig.add_trace(
+            go.Scatter(
+                x=pdc_df["duration_s"],
+                y=pdc_df["best_power_w"],
+                mode="lines+markers",
+                name="PDC",
+                customdata=pdc_df["duration_label"],
+                hovertemplate="Duration: %{customdata}<br>Power: %{y:.1f} W<extra></extra>",
+            )
+        )
         fig.update_layout(
             title="Power Duration Curve",
             xaxis_title="Duration (s)",
@@ -227,32 +245,17 @@ if run_analysis:
             st.dataframe(tbl, use_container_width=True)
 
             # Visual overlay: power vs time with shaded stable blocks
-            # Add a selector to highlight a specific block
-            highlight_options = [f"Block {i+1}" for i in range(len(blocks))]
-            selected_label = st.selectbox("Highlight block", options=["None"] + highlight_options, index=0)
-            selected_idx = None if selected_label == "None" else highlight_options.index(selected_label)
-
             smooth_power_series = df["power"].rolling(window=max(1, smooth_window), min_periods=1).mean()
             fig2 = go.Figure()
             fig2.add_trace(go.Scatter(x=df["timestamp"], y=df["power"], mode="lines", name="Power (W)", opacity=0.35))
             fig2.add_trace(go.Scatter(x=df["timestamp"], y=smooth_power_series, mode="lines", name=f"Smoothed ({smooth_window}s)"))
 
-            palette = [
-                "LightGreen", "LightSkyBlue", "LightSalmon", "Khaki",
-                "Plum", "LightPink", "PaleTurquoise", "Wheat"
-            ]
+            # Color each block differently
+            palette = ["LightGreen", "LightSkyBlue", "LightSalmon", "Khaki", "Plum", "LightPink", "PaleTurquoise", "Wheat"]
             shapes = []
-
-            # Optional avg power line for selected block
-            selected_avg_trace = None
-
             for idx, b in enumerate(blocks):
                 x0 = df.loc[b["start_idx"], "timestamp"]
                 x1 = df.loc[b["end_idx"], "timestamp"]
-                color = palette[idx % len(palette)]
-                opacity = 0.5 if (selected_idx is not None and idx == selected_idx) else 0.20
-                line_width = 2 if (selected_idx is not None and idx == selected_idx) else 0
-
                 shapes.append({
                     "type": "rect",
                     "xref": "x",
@@ -261,18 +264,10 @@ if run_analysis:
                     "x1": x1,
                     "y0": 0,
                     "y1": 1,
-                    "fillcolor": color,
-                    "opacity": opacity,
-                    "line": {"width": line_width, "color": color},
+                    "fillcolor": palette[idx % len(palette)],
+                    "opacity": 0.25,
+                    "line": {"width": 0},
                 })
-
-                if selected_idx is not None and idx == selected_idx and b.get("avg_power"):
-                    selected_avg_trace = go.Scatter(
-                        x=[x0, x1],
-                        y=[b["avg_power"], b["avg_power"]],
-                        mode="lines",
-                        name=f"Block avg ({b['avg_power']:.0f} W)",
-                    )
 
             fig2.update_layout(
                 title="Power over Time (Stable Blocks shaded)",
@@ -283,9 +278,6 @@ if run_analysis:
                 shapes=shapes,
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             )
-
-            if selected_avg_trace is not None:
-                fig2.add_trace(selected_avg_trace)
 
             st.plotly_chart(fig2, use_container_width=True)
 
