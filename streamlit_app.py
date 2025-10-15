@@ -209,14 +209,31 @@ if run_analysis:
                 hovertemplate="Duration: %{customdata}<br>Power: %{y:.1f} W<extra></extra>",
             )
         )
+        # Dynamic tick labels for durations
+        max_x = int(pdc_df["duration_s"].max()) if len(pdc_df) else 3600
+        base_ticks = [5, 10, 15, 30, 45,
+                      60, 120, 180, 300, 600, 900, 1200, 1800,
+                      3600, 5400, 7200, 10800, 14400]
+        tickvals = [t for t in base_ticks if t <= max_x]
+        def _fmt_short(sec: int) -> str:
+            if sec < 60:
+                return f"{sec}s"
+            m, s = divmod(sec, 60)
+            if sec < 3600:
+                return f"{m}m" if s == 0 else f"{m}m{s:02d}s"
+            h, m = divmod(m, 60)
+            return f"{h}h" if m == 0 else f"{h}h{m:02d}m"
+        ticktext = [_fmt_short(t) for t in tickvals]
+
         fig.update_layout(
             title="Power Duration Curve",
-            xaxis_title="Duration (s)",
+            xaxis_title="Duration",
             yaxis_title="Best Average Power (W)",
             xaxis_type="log",
             template="plotly_white",
             height=420,
         )
+        fig.update_xaxes(tickmode="array", tickvals=tickvals, ticktext=ticktext)
         st.plotly_chart(fig, use_container_width=True)
 
         # Stable blocks
@@ -269,6 +286,23 @@ if run_analysis:
                     "line": {"width": 0},
                 })
 
+            # Add block number annotations centered in each shaded area
+            annotations = []
+            for idx, b in enumerate(blocks):
+                x0 = df.loc[b["start_idx"], "timestamp"]
+                x1 = df.loc[b["end_idx"], "timestamp"]
+                x_mid = x0 + (x1 - x0) / 2
+                annotations.append(dict(
+                    x=x_mid,
+                    y=1.01,
+                    xref="x",
+                    yref="paper",
+                    text=f"Block {idx+1}",
+                    showarrow=False,
+                    font=dict(size=12),
+                    align="center",
+                ))
+
             fig2.update_layout(
                 title="Power over Time (Stable Blocks shaded)",
                 xaxis_title="Time",
@@ -276,7 +310,9 @@ if run_analysis:
                 template="plotly_white",
                 height=460,
                 shapes=shapes,
+                annotations=annotations,
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            ),
             )
 
             st.plotly_chart(fig2, use_container_width=True)
