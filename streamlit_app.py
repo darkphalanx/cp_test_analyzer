@@ -133,6 +133,7 @@ if run_analysis:
         })
         st.dataframe(seg_df, use_container_width=True)
 
+<<<<<<< HEAD
         st.subheader("Critical Power Results")
         st.write(f"**Critical Power (CP):** {cp:.1f} W")
         st.write(f"**W′:** {w_prime/1000:.2f} kJ")
@@ -140,6 +141,11 @@ if run_analysis:
     # 5K TT
     else:
         # best segment over 5k
+=======
+        show_result_card("Critical Power (3/12 Test)", f"{cp:.1f} W", f"W′ = {w_prime/1000:.2f} kJ", color="#1a73e8")
+
+    elif "5K" in test_choice:
+>>>>>>> parent of b1849a3 (Update streamlit_app.py)
         best5k, s5k, e5k = best_power_for_distance(df, 5000)
         ext5k = extend_best_segment(df, s5k, e5k, best5k)
         t5k = int(ext5k[3])
