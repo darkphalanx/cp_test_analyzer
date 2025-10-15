@@ -265,8 +265,20 @@ if run_analysis:
             st.dataframe(tbl, use_container_width=True)
 
             # Visual overlay: power vs time with shaded stable blocks
-            # Use elapsed seconds for x-axis to match PDC axis semantics
-            elapsed_s = (df["timestamp"] - df["timestamp"].iloc[0]).dt.total_seconds()
+            # Build elapsed seconds robustly (timestamp may be datetime or numeric)
+            ts = df["timestamp"]
+            if pd.api.types.is_datetime64_any_dtype(ts):
+                elapsed_s = (ts - ts.iloc[0]).dt.total_seconds()
+            else:
+                ts_num = pd.to_numeric(ts, errors="coerce")
+                if ts_num.notna().any():
+                    elapsed_s = ts_num - float(ts_num.iloc[0])
+                else:
+                    elapsed_s = pd.Series(range(len(df)), index=df.index, dtype=float)
+            # ensure strictly positive for log axis
+            elapsed_s = elapsed_s.astype(float)
+            elapsed_s = elapsed_s - float(elapsed_s.min()) + 1.0
+
             smooth_power_series = df["power"].rolling(window=max(1, smooth_window), min_periods=1).mean()
 
             fig2 = go.Figure()
@@ -278,8 +290,8 @@ if run_analysis:
             shapes = []
             annotations = []
             for idx, b in enumerate(blocks, start=1):
-                x0 = elapsed_s.iloc[b["start_idx"]]
-                x1 = elapsed_s.iloc[b["end_idx"]]
+                x0 = float(elapsed_s.iloc[b["start_idx"]])
+                x1 = float(elapsed_s.iloc[b["end_idx"]])
                 shapes.append({
                     "type": "rect",
                     "xref": "x",
@@ -315,7 +327,7 @@ if run_analysis:
                     return f"{m}m" if s == 0 else f"{m}m{s:02d}s"
                 h, m = divmod(m, 60)
                 return f"{h}h" if m == 0 else f"{h}h{m:02d}m"
-            ticktext = [_fmt_short(int(t)) for t in tickvals]
+            ticktext = [_fmt_short(int(t)) for t in tickvals] if tickvals else None
 
             fig2.update_layout(
                 title="Power over Time (Stable Blocks)",
@@ -328,7 +340,8 @@ if run_analysis:
                 annotations=annotations,
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             )
-            fig2.update_xaxes(tickmode="array", tickvals=tickvals, ticktext=ticktext)
+            if ticktext is not None:
+                fig2.update_xaxes(tickmode="array", tickvals=tickvals, ticktext=ticktext)
 
             st.plotly_chart(fig2, use_container_width=True)
 
