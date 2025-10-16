@@ -163,30 +163,40 @@ def compute_power_duration_curve(df: pd.DataFrame, max_duration_s: int = 3600, s
 
 def detect_best_test_segments(df: pd.DataFrame, expected_durations=(180, 720), tolerance: float = 0.2):
     """
-    Find the best power segments around expected durations (± tolerance).
-    Returns a list of dicts.
+    Find the best power segments around expected durations (± tolerance),
+    then extend them if the average power remains stable.
     """
-    df = normalize_columns(df)
+    from .cp_utils import extend_best_segment  # or relative import if inside same file
+
+    df = normalize_columns(df).copy()
+    if "power" not in df.columns:
+        raise ValueError("Missing power column")
+
+    df["power_smooth"] = df["power"].rolling(3, min_periods=1).mean()
+
     segments = []
     for dur in expected_durations:
         lower, upper = int(dur * (1 - tolerance)), int(dur * (1 + tolerance))
         best_pow, best_dur, s_idx, e_idx = 0, 0, 0, 0
         for d in range(lower, upper + 1):
-            roll = df["power"].rolling(d, min_periods=d).mean()
+            roll = df["power_smooth"].rolling(d, min_periods=d).mean()
             if roll.notna().any() and roll.max() > best_pow:
                 best_pow = float(roll.max())
                 best_dur = d
                 e_idx = int(roll.idxmax())
                 s_idx = max(0, e_idx - d + 1)
         if best_pow > 0:
+            # extend segment for stability
+            best_pow, s_idx, e_idx, new_dur = extend_best_segment(df, s_idx, e_idx, best_pow, max_extend=int(dur * 0.2))
             segments.append({
                 "target_dur": dur,
-                "found_dur": best_dur,
+                "found_dur": new_dur,
                 "avg_power": best_pow,
                 "start_idx": s_idx,
                 "end_idx": e_idx
             })
     return segments
+
 
 
 def infer_test_type_from_pdc(df: pd.DataFrame):
