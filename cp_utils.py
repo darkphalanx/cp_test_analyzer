@@ -155,7 +155,7 @@ def find_best_effort(df: pd.DataFrame, duration_s: int, equality_tolerance: floa
 # ------------------------------
 # Best-effort (distance-based, prefer watch distance then stryd)
 # ------------------------------
-def find_best_distance_effort(df: pd.DataFrame, distance_m: float, equality_tolerance: float = 0.001):
+def find_best_distance_effort(df: pd.DataFrame, distance_m: float, equality_tolerance: float = 0):
     df = normalize_columns(df)
     if "power" not in df.columns:
         raise ValueError("Missing power column")
