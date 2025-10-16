@@ -163,20 +163,22 @@ def compute_power_duration_curve(df: pd.DataFrame, max_duration_s: int = 3600, s
 
 def detect_best_test_segments(df: pd.DataFrame, expected_durations=(180, 720), tolerance: float = 0.2):
     """
-    Find the best power segments around expected durations (± tolerance),
-    then extend them if the average power remains stable.
+    Detect best power segments near expected durations (± tolerance),
+    then expand both backward and forward as long as mean power
+    stays within 98% of best.
     """
-
     df = normalize_columns(df).copy()
     if "power" not in df.columns:
         raise ValueError("Missing power column")
 
-    df["power_smooth"] = df["power"].rolling(3, min_periods=1).mean()
-
+    df["power_smooth"] = df["power"].rolling(5, min_periods=1).mean()
     segments = []
+
     for dur in expected_durations:
         lower, upper = int(dur * (1 - tolerance)), int(dur * (1 + tolerance))
         best_pow, best_dur, s_idx, e_idx = 0, 0, 0, 0
+
+        # Step 1 – Find best rolling window
         for d in range(lower, upper + 1):
             roll = df["power_smooth"].rolling(d, min_periods=d).mean()
             if roll.notna().any() and roll.max() > best_pow:
@@ -184,19 +186,44 @@ def detect_best_test_segments(df: pd.DataFrame, expected_durations=(180, 720), t
                 best_dur = d
                 e_idx = int(roll.idxmax())
                 s_idx = max(0, e_idx - d + 1)
-        if best_pow > 0:
-            # directly call extend_best_segment (same file)
-            best_pow, s_idx, e_idx, new_dur = extend_best_segment(
-                df, s_idx, e_idx, best_pow, max_extend=int(dur * 0.2)
-            )
-            segments.append({
-                "target_dur": dur,
-                "found_dur": new_dur,
-                "avg_power": best_pow,
-                "start_idx": s_idx,
-                "end_idx": e_idx
-            })
+
+        if best_pow <= 0:
+            continue
+
+        # Step 2 – Expand both directions while mean ≥ 98 % of best
+        power_arr = df["power_smooth"].to_numpy(dtype=float)
+        start, end = s_idx, e_idx
+        tol_drop = best_pow * 0.98
+
+        # expand backward
+        while start > 0:
+            new_mean = power_arr[start - 1:end + 1].mean()
+            if new_mean >= tol_drop:
+                start -= 1
+                best_pow = new_mean
+            else:
+                break
+
+        # expand forward
+        while end < len(power_arr) - 1:
+            new_mean = power_arr[start:end + 2].mean()
+            if new_mean >= tol_drop:
+                end += 1
+                best_pow = new_mean
+            else:
+                break
+
+        new_dur = end - start + 1
+        segments.append({
+            "target_dur": dur,
+            "found_dur": new_dur,
+            "avg_power": best_pow,
+            "start_idx": start,
+            "end_idx": end
+        })
+
     return segments
+
 
 def detect_stable_blocks(
     df: pd.DataFrame,
