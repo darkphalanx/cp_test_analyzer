@@ -105,12 +105,21 @@ if run_analysis:
         segments = [("Short", short_seg), ("Long", long_seg)]
 
         pdc_df = compute_power_duration_curve(df, max_duration_s=max(int(long_min*120), 1800), step=5)
+        pdc_df["formatted_dur"] = pdc_df["duration_s"].apply(format_seconds)
         fig_pdc = go.Figure()
-        fig_pdc.add_trace(go.Scatter(x=pdc_df["duration_s"], y=pdc_df["best_power_w"], mode="lines+markers", name="PDC"))
+        fig_pdc.add_trace(go.Scatter(
+            x=pdc_df["duration_s"],
+            y=pdc_df["best_power_w"],
+            mode="lines+markers",
+            name="PDC",
+            customdata=np.stack((pdc_df["formatted_dur"], pdc_df["duration_s"]), axis=-1),
+            hovertemplate="Duration %{customdata[0]} (%{customdata[1]} s)<br>Avg Power %{y:.1f} W<extra></extra>"
+        ))
         for label, seg in segments:
             fig_pdc.add_vline(x=seg["found_dur"], line=dict(color="orange", width=2, dash="dash"),
                               annotation_text=f"{label} {format_duration(seg['found_dur'])}", annotation_position="top right")
-        tickvals = pdc_df["duration_s"][::len(pdc_df)//10 or 1]
+        tick_count = min(10, len(pdc_df))
+        tickvals = np.linspace(pdc_df["duration_s"].min(), pdc_df["duration_s"].max(), tick_count).astype(int)
         fig_pdc.update_xaxes(title="Duration (hh:mm:ss)", tickvals=tickvals, ticktext=[format_seconds(s) for s in tickvals])
         st.plotly_chart(fig_pdc, use_container_width=True)
 
@@ -122,7 +131,8 @@ if run_analysis:
             x0, x1 = float(elapsed_s.iloc[seg["start_idx"]]), float(elapsed_s.iloc[seg["end_idx"]])
             fig_time.add_vrect(x0=x0, x1=x1, fillcolor=color, opacity=0.3, line_width=0)
             fig_time.add_annotation(x=(x0+x1)/2, y=float(df["power"].max()), text=label, showarrow=False, yanchor="bottom")
-        tickvals = elapsed_s[::len(elapsed_s)//10 or 1]
+        tick_count = min(10, len(elapsed_s))
+        tickvals = np.linspace(elapsed_s.min(), elapsed_s.max(), tick_count)
         fig_time.update_xaxes(title="Elapsed Time (hh:mm:ss)", tickvals=tickvals, ticktext=[format_seconds(s) for s in tickvals])
         st.plotly_chart(fig_time, use_container_width=True)
 
@@ -167,11 +177,20 @@ if run_analysis:
 
         segments = [(label, seg)]
         pdc_df = compute_power_duration_curve(df, max_duration_s=3600, step=5)
+        pdc_df["formatted_dur"] = pdc_df["duration_s"].apply(format_seconds)
         fig_pdc = go.Figure()
-        fig_pdc.add_trace(go.Scatter(x=pdc_df["duration_s"], y=pdc_df["best_power_w"], mode="lines+markers", name="PDC"))
+        fig_pdc.add_trace(go.Scatter(
+            x=pdc_df["duration_s"],
+            y=pdc_df["best_power_w"],
+            mode="lines+markers",
+            name="PDC",
+            customdata=np.stack((pdc_df["formatted_dur"], pdc_df["duration_s"]), axis=-1),
+            hovertemplate="Duration %{customdata[0]} (%{customdata[1]} s)<br>Avg Power %{y:.1f} W<extra></extra>"
+        ))
         for label, sdict in segments:
             fig_pdc.add_vline(x=sdict["found_dur"], line=dict(color="orange", width=2, dash="dash"), annotation_text=f"{format_duration(sdict['found_dur'])}", annotation_position="top right")
-        tickvals = pdc_df["duration_s"][::len(pdc_df)//10 or 1]
+        tick_count = min(10, len(pdc_df))
+        tickvals = np.linspace(pdc_df["duration_s"].min(), pdc_df["duration_s"].max(), tick_count).astype(int)
         fig_pdc.update_xaxes(title="Duration (hh:mm:ss)", tickvals=tickvals, ticktext=[format_seconds(s) for s in tickvals])
         st.plotly_chart(fig_pdc, use_container_width=True)
 
@@ -182,7 +201,8 @@ if run_analysis:
         x0, x1 = float(elapsed_s.iloc[seg["start_idx"]]), float(elapsed_s.iloc[seg["end_idx"]])
         fig_time.add_vrect(x0=x0, x1=x1, fillcolor=color, opacity=0.3, line_width=0)
         fig_time.add_annotation(x=(x0+x1)/2, y=float(df["power"].max()), text=label, showarrow=False, yanchor="bottom")
-        tickvals = elapsed_s[::len(elapsed_s)//10 or 1]
+        tick_count = min(10, len(elapsed_s))
+        tickvals = np.linspace(elapsed_s.min(), elapsed_s.max(), tick_count)
         fig_time.update_xaxes(title="Elapsed Time (hh:mm:ss)", tickvals=tickvals, ticktext=[format_seconds(s) for s in tickvals])
         st.plotly_chart(fig_time, use_container_width=True)
 
@@ -204,9 +224,18 @@ if run_analysis:
     # ---------- Segment Analysis ----------
     else:
         pdc_df = compute_power_duration_curve(df, max_duration_s=3600, step=5)
+        pdc_df["formatted_dur"] = pdc_df["duration_s"].apply(format_seconds)
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=pdc_df["duration_s"], y=pdc_df["best_power_w"], mode="lines+markers", name="PDC"))
-        tickvals = pdc_df["duration_s"][::len(pdc_df)//10 or 1]
+        fig.add_trace(go.Scatter(
+            x=pdc_df["duration_s"],
+            y=pdc_df["best_power_w"],
+            mode="lines+markers",
+            name="PDC",
+            customdata=np.stack((pdc_df["formatted_dur"], pdc_df["duration_s"]), axis=-1),
+            hovertemplate="Duration %{customdata[0]} (%{customdata[1]} s)<br>Avg Power %{y:.1f} W<extra></extra>"
+        ))
+        tick_count = min(10, len(pdc_df))
+        tickvals = np.linspace(pdc_df["duration_s"].min(), pdc_df["duration_s"].max(), tick_count).astype(int)
         fig.update_xaxes(title="Duration (hh:mm:ss)", tickvals=tickvals, ticktext=[format_seconds(s) for s in tickvals])
         st.plotly_chart(fig, use_container_width=True)
 
@@ -231,6 +260,7 @@ if run_analysis:
                 x0, x1 = float(elapsed_s.iloc[b["start_idx"]]), float(elapsed_s.iloc[b["end_idx"]])
                 fig2.add_vrect(x0=x0, x1=x1, fillcolor=palette[idx % len(palette)], opacity=0.25, line_width=0)
                 fig2.add_annotation(x=(x0+x1)/2, y=float(df["power"].max()), text=f"B{idx+1}", showarrow=False, yanchor="bottom")
-            tickvals = elapsed_s[::len(elapsed_s)//10 or 1]
+            tick_count = min(10, len(elapsed_s))
+            tickvals = np.linspace(elapsed_s.min(), elapsed_s.max(), tick_count)
             fig2.update_xaxes(title="Elapsed Time (hh:mm:ss)", tickvals=tickvals, ticktext=[format_seconds(s) for s in tickvals])
             st.plotly_chart(fig2, use_container_width=True)
