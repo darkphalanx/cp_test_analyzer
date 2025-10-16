@@ -148,9 +148,7 @@ if run_analysis:
                                         long_seg["avg_power"],  long_seg["found_dur"])
         st.success(f"**Critical Power:** {cp:.1f} W | **W′:** {w_prime/1000:.2f} kJ")
 
-    # ---------- 5K Test ----------
-    elif mode == "5K Test":
-# ---------- 5K Test ----------
+        # ---------- 5K Test ----------
         elif mode == "5K Test":
             try:
                 if fivek_mode == "Distance":
