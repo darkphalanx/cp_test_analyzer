@@ -225,6 +225,7 @@ def detect_best_test_segments(df: pd.DataFrame, expected_durations=(180, 720), t
     return segments
 
 
+
 def detect_stable_blocks(
     df: pd.DataFrame,
     max_std_ratio: float = 0.05,
