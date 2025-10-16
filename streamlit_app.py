@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -7,12 +8,12 @@ import plotly.graph_objects as go
 
 from cp_utils import (
     load_csv_auto,
-    extend_best_segment,
     compute_cp_linear,
     compute_cp_5k_range,
     detect_best_test_segments,
     detect_stable_blocks,
     compute_power_duration_curve,
+    running_effectiveness,
 )
 
 # ===========================
@@ -88,7 +89,7 @@ st.set_page_config(page_title="Critical Power Analyzer", page_icon="⚡", layout
 with st.sidebar:
     st.header("⚙️ Settings")
 
-    uploaded_file = st.file_uploader("📁 Upload CSV (Garmin/Stryd export)", type=["csv"])
+    uploaded_file = st.file_uploader("📁 Upload CSV (Garmin/Stryd export)", type=["csv'])
     stryd_weight = st.number_input("⚖️ Stryd Weight (kg)", min_value=40.0, max_value=120.0, value=76.0, step=0.1)
     test_choice = st.radio("Choose Analysis Type", ["Critical Power Test (3/12)", "5K Test", "Segment Analysis"], index=0)
 
@@ -147,9 +148,10 @@ if run_analysis:
     # === 3/12 TEST MODE ==================================
     # =====================================================
     if "3/12" in test_choice:
-        segments = detect_best_test_segments(df, expected_durations=(180, 720))
+        # Detect two efforts (short: 2–4 min, long: 9–12 min)
+        segments = detect_best_test_segments(df, expected_durations=(180, 720), tolerance=0.333)  # ±33% covers 2–4 and 9–12
 
-        # --- PDC
+        # PDC
         pdc_df = compute_pdc_cached(file_hash, 1800, 5, df["power"])
         fig_pdc = go.Figure()
         fig_pdc.add_trace(go.Scatter(
@@ -167,7 +169,7 @@ if run_analysis:
         fig_pdc.update_layout(title="Power Duration Curve", template="plotly_white", height=400)
         st.plotly_chart(fig_pdc, use_container_width=True)
 
-        # --- Segments
+        # Segments overlay
         elapsed_s = (df["timestamp"] - df["timestamp"].iloc[0]).dt.total_seconds()
         fig_time = go.Figure()
         fig_time.add_trace(go.Scatter(x=elapsed_s, y=df["power"], mode="lines", opacity=0.4, name="Power"))
@@ -175,11 +177,37 @@ if run_analysis:
             color = f"rgba(255,165,0,{0.25 + 0.2*i})"
             x0, x1 = float(elapsed_s.iloc[seg["start_idx"]]), float(elapsed_s.iloc[seg["end_idx"]])
             fig_time.add_vrect(x0=x0, x1=x1, fillcolor=color, opacity=0.3, line_width=0)
-            fig_time.add_annotation(x=(x0+x1)/2, y=max(df["power"]), text=f"Seg {i+1}", showarrow=False, yanchor="bottom")
+            fig_time.add_annotation(x=(x0+x1)/2, y=float(df["power"].max()), text=f"Seg {i+1}", showarrow=False, yanchor="bottom")
         fig_time.update_layout(title="Detected 3/12 Segments", template="plotly_white", height=400)
         st.plotly_chart(fig_time, use_container_width=True)
 
-        # --- CP Calculation
+        # Segment stats table
+        dist_col = find_col_contains(df, "watch distance") or find_col_contains(df, "distance (m)") or find_col_contains(df, "distance_m") or find_col_contains(df, "distance")
+        rows = []
+        for i, seg in enumerate(segments):
+            start, end = seg["start_idx"], seg["end_idx"]
+            duration = int(seg["found_dur"])
+            power = float(seg["avg_power"])
+            distance_m = np.nan
+            if dist_col:
+                dist_series = pd.to_numeric(df[dist_col], errors="coerce").ffill()
+                if dist_series.notna().any():
+                    distance_m = float(dist_series.iloc[end] - dist_series.iloc[start])
+            RE = None
+            if not np.isnan(distance_m) and distance_m > 0:
+                RE = running_effectiveness(distance_m, duration, power, stryd_weight)
+            rows.append({
+                "Segment": f"{i+1}",
+                "Duration (s)": duration,
+                "Duration (mm:ss)": fmt_pace_mmss(duration),
+                "Avg Power (W)": f"{power:.1f}",
+                "Distance (m)": f"{distance_m:.0f}" if not np.isnan(distance_m) else "–",
+                "RE": f"{RE:.3f}" if RE else "–",
+            })
+        st.subheader("Segment Statistics")
+        st.dataframe(pd.DataFrame(rows), use_container_width=True)
+
+        # CP Calculation when we have 2 segments
         if len(segments) >= 2:
             p1, t1 = segments[0]["avg_power"], segments[0]["found_dur"]
             p2, t2 = segments[1]["avg_power"], segments[1]["found_dur"]
@@ -190,7 +218,7 @@ if run_analysis:
     # === 5K TEST MODE ====================================
     # =====================================================
     elif "5K" in test_choice:
-        segments = detect_best_test_segments(df, expected_durations=(1200,))  # ~20 min
+        segments = detect_best_test_segments(df, expected_durations=(1200,), tolerance=0.25)  # ~15–25 min window
         pdc_df = compute_pdc_cached(file_hash, 3600, 5, df["power"])
         fig_pdc = go.Figure()
         fig_pdc.add_trace(go.Scatter(
@@ -208,7 +236,6 @@ if run_analysis:
         fig_pdc.update_layout(title="Power Duration Curve", template="plotly_white", height=400)
         st.plotly_chart(fig_pdc, use_container_width=True)
 
-        # Power over time
         elapsed_s = (df["timestamp"] - df["timestamp"].iloc[0]).dt.total_seconds()
         fig_time = go.Figure()
         fig_time.add_trace(go.Scatter(x=elapsed_s, y=df["power"], mode="lines", opacity=0.4, name="Power"))
@@ -216,12 +243,13 @@ if run_analysis:
             color = f"rgba(255,165,0,{0.25 + 0.2*i})"
             x0, x1 = float(elapsed_s.iloc[seg["start_idx"]]), float(elapsed_s.iloc[seg["end_idx"]])
             fig_time.add_vrect(x0=x0, x1=x1, fillcolor=color, opacity=0.3, line_width=0)
-            fig_time.add_annotation(x=(x0+x1)/2, y=max(df["power"]), text=f"Seg {i+1}", showarrow=False, yanchor="bottom")
-        fig_time.update_layout(title="Detected 5K/20min Segments", template="plotly_white", height=400)
+            fig_time.add_annotation(x=(x0+x1)/2, y=float(df["power"].max()), text=f"Seg {i+1}", showarrow=False, yanchor="bottom")
+        fig_time.update_layout(title="Detected 5K/Long TT Segments", template="plotly_white", height=400)
         st.plotly_chart(fig_time, use_container_width=True)
 
+        # CP estimation from long segment power
         if len(segments) >= 1:
-            avg_pow = segments[0]["avg_power"]
+            avg_pow = float(segments[0]["avg_power"])
             cp_range = compute_cp_5k_range(avg_pow)
             cp_min, cp_mid, cp_max = min(cp_range.values()), list(cp_range.values())[1], max(cp_range.values())
             show_result_card("Estimated CP range", f"{cp_min:.1f}–{cp_max:.1f} W", f"Typical ≈ {cp_mid:.1f} W", "#ff8800")
@@ -241,6 +269,10 @@ if run_analysis:
         fig.update_layout(title="Power Duration Curve", template="plotly_white", height=420)
         st.plotly_chart(fig, use_container_width=True)
 
+        max_std = max_std or 0.05
+        min_block = min_block or 60
+        smooth_window = smooth_window or 5
+
         blocks = detect_stable_blocks_cached(file_hash, max_std, min_block, smooth_window, stryd_weight, df)
         if not blocks:
             st.info("No stable blocks found.")
@@ -254,8 +286,7 @@ if run_analysis:
                     "Pace (/km)": fmt_pace_mmss(b['pace_per_km']) if b['pace_per_km'] else "–",
                     "RE": f"{b['RE']:.3f}" if b.get("RE") else "–",
                 })
-            tbl = pd.DataFrame(rows)
-            st.dataframe(tbl, use_container_width=True)
+            st.dataframe(pd.DataFrame(rows), use_container_width=True)
 
             elapsed_s = (df["timestamp"] - df["timestamp"].iloc[0]).dt.total_seconds()
             smooth_power = df["power"].rolling(window=max(1, smooth_window), min_periods=1).mean()
@@ -267,7 +298,7 @@ if run_analysis:
             for idx, b in enumerate(blocks):
                 x0, x1 = float(elapsed_s.iloc[b['start_idx']]), float(elapsed_s.iloc[b['end_idx']])
                 fig2.add_vrect(x0=x0, x1=x1, fillcolor=palette[idx % len(palette)], opacity=0.25, line_width=0)
-                fig2.add_annotation(x=(x0+x1)/2, y=max(df["power"]), text=f"B{idx+1}", showarrow=False, yanchor="bottom")
+                fig2.add_annotation(x=(x0+x1)/2, y=float(df["power"].max()), text=f"B{idx+1}", showarrow=False, yanchor="bottom")
 
             fig2.update_layout(title="Power over Time (Stable Blocks)", template="plotly_white", height=460)
             st.plotly_chart(fig2, use_container_width=True)

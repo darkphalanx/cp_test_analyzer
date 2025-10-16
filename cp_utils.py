@@ -1,9 +1,10 @@
+
 """
 Critical Power Analysis – Core Functions (3/12, 5K, PDC & Stable Blocks)
 Author: Jordi & GPT-5
 """
-
 from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 
@@ -12,6 +13,7 @@ import numpy as np
 # ============================================================
 
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize column names and common variants for consistent internal use."""
     df = df.copy()
     df.columns = [c.strip().lower() for c in df.columns]
 
@@ -21,7 +23,7 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
             rename_map[c] = "power"
         elif c == "power (w/kg)":
             rename_map[c] = "power_wkg"
-        elif c in ["distance", "distance (m)", "stryd distance (m)"]:
+        elif c in ["distance", "distance (m)", "stryd distance (m)", "watch distance (meters)", "watch distance"]:
             rename_map[c] = "watch distance (meters)"
         elif c in ["time", "elapsed time (s)"]:
             rename_map[c] = "timestamp"
@@ -31,12 +33,12 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
-
 # ============================================================
 #  CSV Handling
 # ============================================================
 
 def load_csv_auto(file) -> pd.DataFrame:
+    """Load a CSV uploaded through Streamlit and automatically detect the separator."""
     import io
     if hasattr(file, "getvalue"):
         sample = file.getvalue().decode("utf-8", errors="ignore")[:500]
@@ -50,12 +52,12 @@ def load_csv_auto(file) -> pd.DataFrame:
             df = pd.read_csv(file, sep=",")
     return normalize_columns(df)
 
-
 # ============================================================
 #  Core Calculations
 # ============================================================
 
 def best_avg_power(df: pd.DataFrame, window_sec: int, sampling_rate: int = 1):
+    """Find best average power for a given duration (seconds)."""
     df = normalize_columns(df)
     if "power" not in df.columns:
         raise ValueError("Missing column: power")
@@ -67,8 +69,8 @@ def best_avg_power(df: pd.DataFrame, window_sec: int, sampling_rate: int = 1):
     start_idx = max(0, best_idx - window_samples + 1)
     return best_power, start_idx, best_idx
 
-
 def extend_best_segment(df: pd.DataFrame, start_idx: int, end_idx: int, best_power: float, max_extend: int = 60):
+    """Extend a detected best segment forward if slightly longer durations keep avg power as good or better."""
     df = normalize_columns(df)
     current_end = int(end_idx)
     best_power = float(best_power)
@@ -86,22 +88,22 @@ def extend_best_segment(df: pd.DataFrame, start_idx: int, end_idx: int, best_pow
     duration = int(current_end - start_idx + 1)
     return best_power, start_idx, current_end, duration
 
-
 def compute_cp_linear(p1: float, t1: int, p2: float, t2: int):
+    """Compute CP and W′ using the linear 3/12-minute model."""
     cp = (p1 * t1 - p2 * t2) / (t1 - t2)
     w_prime = (p1 - p2) * t1 * t2 / (t2 - t1)
     return float(cp), float(w_prime)
 
-
 def best_power_for_distance(df: pd.DataFrame, distance_m: float):
+    """Find best average power over the specified distance (meters)."""
     df = normalize_columns(df)
     dist_col = None
     for col in df.columns:
-        if "watch distance" in col or "stryd distance" in col:
+        if "watch distance" in col or "stryd distance" in col or col == "distance (m)" or col == "distance_m":
             dist_col = col
             break
     if dist_col is None:
-        raise ValueError("No distance column found")
+        raise ValueError("No distance column found (expected 'Watch Distance (meters)' or 'Stryd Distance').")
 
     df["dist"] = pd.to_numeric(df[dist_col], errors="coerce").ffill().astype(float)
 
@@ -120,111 +122,46 @@ def best_power_for_distance(df: pd.DataFrame, distance_m: float):
             best_power = avg_pow
             start_idx, end_idx = i, j
     if best_power <= 0.0:
-        raise RuntimeError("No valid distance window found.")
+        raise RuntimeError("No valid distance window found. Check distance scaling in the CSV.")
     return best_power, start_idx, end_idx
 
-
 # ============================================================
-#  Derived Metrics
+#  Models and Derived Metrics
 # ============================================================
 
 def compute_cp_5k_range(p: float) -> dict[str, float]:
+    """Estimate CP range from a 5K TT using empirical scaling factors (different fatigue profiles)."""
     profiles = {"Aerobic": 0.985, "Balanced": 0.975, "Anaerobic": 0.965}
     return {label: p * f for label, f in profiles.items()}
 
-
 def running_effectiveness(distance_m: float, duration_s: float, power_w: float, weight_kg: float | None):
+    """Compute Running Effectiveness (RE) = (velocity * weight_kg) / power_w"""
     if duration_s <= 0 or power_w <= 0 or not weight_kg:
         return None
-    velocity = distance_m / duration_s
+    velocity = distance_m / duration_s  # m/s
     return (velocity * weight_kg) / power_w
 
-
 # ============================================================
-#  Power Duration Curve
+#  Power Duration Curve (PDC)
 # ============================================================
 
-def compute_power_duration_curve(df: pd.DataFrame, max_duration_s: int = 3600, step: int = 5):
+def compute_power_duration_curve(df: pd.DataFrame, max_duration_s: int = 3600, step: int = 5) -> pd.DataFrame:
+    """Compute a power–duration curve using durations 5..max with a fixed step."""
     df = normalize_columns(df)
     if "power" not in df.columns:
         raise ValueError("Missing column: power")
-
-    durations = np.arange(5, max_duration_s + 1, step)
+    durations = np.arange(5, int(max_duration_s) + 1, int(max(1, step)))
     powers = []
+    s = df["power"].reset_index(drop=True)
     for d in durations:
-        roll = df["power"].rolling(d, min_periods=d).mean()
-        powers.append(float(roll.max()) if roll.notna().any() else np.nan)
+        rm = s.rolling(d, min_periods=d).mean()
+        m = float(rm.max()) if rm.notna().any() else np.nan
+        powers.append(m)
     return pd.DataFrame({"duration_s": durations, "best_power_w": powers}).dropna()
 
-
 # ============================================================
-#  New: Test Detection & Segment Extraction
+#  Stable Power Blocks (variability-based)
 # ============================================================
-
-def detect_best_test_segments(df: pd.DataFrame, expected_durations=(180, 720), tolerance: float = 0.2):
-    """
-    Detect best power segments near expected durations (± tolerance),
-    then expand both backward and forward as long as mean power
-    stays within 98% of best.
-    """
-    df = normalize_columns(df).copy()
-    if "power" not in df.columns:
-        raise ValueError("Missing power column")
-
-    df["power_smooth"] = df["power"].rolling(5, min_periods=1).mean()
-    segments = []
-
-    for dur in expected_durations:
-        lower, upper = int(dur * (1 - tolerance)), int(dur * (1 + tolerance))
-        best_pow, best_dur, s_idx, e_idx = 0, 0, 0, 0
-
-        # Step 1 – Find best rolling window
-        for d in range(lower, upper + 1):
-            roll = df["power_smooth"].rolling(d, min_periods=d).mean()
-            if roll.notna().any() and roll.max() > best_pow:
-                best_pow = float(roll.max())
-                best_dur = d
-                e_idx = int(roll.idxmax())
-                s_idx = max(0, e_idx - d + 1)
-
-        if best_pow <= 0:
-            continue
-
-        # Step 2 – Expand both directions while mean ≥ 98 % of best
-        power_arr = df["power_smooth"].to_numpy(dtype=float)
-        start, end = s_idx, e_idx
-        tol_drop = best_pow * 0.98
-
-        # expand backward
-        while start > 0:
-            new_mean = power_arr[start - 1:end + 1].mean()
-            if new_mean >= tol_drop:
-                start -= 1
-                best_pow = new_mean
-            else:
-                break
-
-        # expand forward
-        while end < len(power_arr) - 1:
-            new_mean = power_arr[start:end + 2].mean()
-            if new_mean >= tol_drop:
-                end += 1
-                best_pow = new_mean
-            else:
-                break
-
-        new_dur = end - start + 1
-        segments.append({
-            "target_dur": dur,
-            "found_dur": new_dur,
-            "avg_power": best_pow,
-            "start_idx": start,
-            "end_idx": end
-        })
-
-    return segments
-
-
 
 def detect_stable_blocks(
     df: pd.DataFrame,
@@ -234,11 +171,7 @@ def detect_stable_blocks(
     sampling_rate: int = 1,
     weight_kg: float | None = None,
 ):
-    """
-    Identify stable-power blocks where rolling_std/rolling_mean <= max_std_ratio.
-    Returns a list of dicts with stats:
-    start_idx, end_idx, duration_s, avg_power, distance_m, pace_per_km, RE, start_elapsed, end_elapsed.
-    """
+    """Identify stable-power blocks where rolling_std/rolling_mean <= max_std_ratio."""
     df = normalize_columns(df)
     for col in ["power", "watch distance (meters)", "timestamp"]:
         if col not in df.columns:
@@ -246,7 +179,7 @@ def detect_stable_blocks(
 
     window = int(max(1, smooth_window_sec) * sampling_rate)
     roll_mean = df["power"].rolling(window=window, min_periods=1).mean()
-    roll_std = df["power"].rolling(window=window, min_periods=1).std()
+    roll_std  = df["power"].rolling(window=window, min_periods=1).std()
     ratio = (roll_std / roll_mean).fillna(0)
     stable = (ratio <= max_std_ratio).to_numpy()
 
@@ -285,6 +218,7 @@ def detect_stable_blocks(
                     })
                 start = None
 
+    # tail
     if start is not None:
         end = n - 1
         dur = (end - start + 1) / sampling_rate
@@ -307,24 +241,71 @@ def detect_stable_blocks(
 
     return sorted(blocks, key=lambda x: x["start_elapsed"])
 
+# ============================================================
+#  New: Test Detection & Segment Extraction
+# ============================================================
 
-def infer_test_type_from_pdc(df: pd.DataFrame):
+def detect_best_test_segments(df: pd.DataFrame, expected_durations=(180, 720), tolerance: float = 0.2):
     """
-    Infer whether the uploaded run resembles a 3/12-min test, a 5K TT, or a 20-min test.
-    Uses simple duration-power ratios.
+    Detect best power segments near expected durations (± tolerance), then expand
+    backward and forward as long as mean power stays within 98% of the best found.
+    Returns list of dicts with: target_dur, found_dur, avg_power, start_idx, end_idx
     """
-    pdc = compute_power_duration_curve(df, max_duration_s=1800, step=5)
-    if pdc.empty:
-        return "Unknown"
+    df = normalize_columns(df).copy()
+    if "power" not in df.columns:
+        raise ValueError("Missing power column")
 
-    p5 = pdc.loc[pdc["duration_s"].between(160, 200), "best_power_w"].max(skipna=True)
-    p12 = pdc.loc[pdc["duration_s"].between(660, 780), "best_power_w"].max(skipna=True)
-    p20 = pdc.loc[pdc["duration_s"].between(1140, 1260), "best_power_w"].max(skipna=True)
+    # small smoothing to reduce sensitivity to single-sample dips
+    df["power_smooth"] = df["power"].rolling(5, min_periods=1).mean()
 
-    if pd.notna(p5) and pd.notna(p12):
-        return "3/12-min Test"
-    if pd.notna(p20):
-        return "20-min TT"
-    if pdc["duration_s"].max() > 1000:
-        return "5K / Long TT"
-    return "Unknown"
+    segments = []
+    for dur in expected_durations:
+        lower, upper = int(dur * (1 - tolerance)), int(dur * (1 + tolerance))
+        best_pow, best_dur, s_idx, e_idx = 0.0, 0, 0, 0
+
+        # Step 1 – find best window around expected duration
+        s = df["power_smooth"].reset_index(drop=True)
+        for d in range(lower, upper + 1):
+            roll = s.rolling(d, min_periods=d).mean()
+            if roll.notna().any() and float(roll.max()) > best_pow:
+                best_pow = float(roll.max())
+                best_dur = d
+                e_idx = int(roll.idxmax())
+                s_idx = max(0, e_idx - d + 1)
+
+        if best_pow <= 0:
+            continue
+
+        # Step 2 – expand both directions while within tolerance
+        power_arr = s.to_numpy(dtype=float)
+        start, end = s_idx, e_idx
+        tol_drop = best_pow * 0.98  # allow small drop
+
+        # expand backward
+        while start > 0:
+            new_mean = power_arr[start - 1:end + 1].mean()
+            if new_mean >= tol_drop:
+                start -= 1
+                best_pow = new_mean
+            else:
+                break
+
+        # expand forward
+        while end < len(power_arr) - 1:
+            new_mean = power_arr[start:end + 2].mean()
+            if new_mean >= tol_drop:
+                end += 1
+                best_pow = new_mean
+            else:
+                break
+
+        new_dur = end - start + 1
+        segments.append({
+            "target_dur": dur,
+            "found_dur": int(new_dur),
+            "avg_power": float(best_pow),
+            "start_idx": int(start),
+            "end_idx": int(end),
+        })
+
+    return segments
