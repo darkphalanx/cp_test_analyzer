@@ -5,7 +5,7 @@ import numpy as np
 import hashlib
 import plotly.graph_objects as go
 
-from cp_utils_v8 import (
+from cp_utils import (
     load_csv_auto,
     compute_cp_linear,
     compute_cp_5k_range,
