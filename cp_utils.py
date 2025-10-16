@@ -103,33 +103,43 @@ def _get_distance_series(df: pd.DataFrame) -> pd.Series | None:
 # Best-effort (exact duration then extend forward if avg stays >= base)
 # ------------------------------
 def find_best_effort(df: pd.DataFrame, duration_s: int, equality_tolerance: float = 0.001):
+    """
+    Find the best effort of at least `duration_s` seconds.
+    1. Finds the highest average power over the exact duration.
+    2. Extends forward as long as the new average power remains
+       >= the original average (within tolerance).
+    Does NOT include the second that causes a drop.
+    """
     df = normalize_columns(df)
     if "power" not in df.columns:
         raise ValueError("Missing power column")
+
     p = pd.to_numeric(df["power"], errors="coerce").fillna(0.0).to_numpy(dtype=float)
     n = len(p)
     if n < duration_s:
         raise RuntimeError("Activity too short for requested duration.")
 
+    # Precompute cumulative sums for O(1) window averages
     cumsum = np.cumsum(np.insert(p, 0, 0.0))
     window_sums = cumsum[duration_s:] - cumsum[:-duration_s]
     rolling_means = window_sums / duration_s
+
     best_idx = int(np.argmax(rolling_means))
     start_idx = best_idx
     end_idx = best_idx + duration_s - 1
 
     base_sum = window_sums[best_idx]
     base_len = duration_s
-    base_avg = float(base_sum / base_len)
+    base_avg = base_sum / base_len
 
-    # extend forward while mean doesn't get worse (allow minimal tolerance)
+    # ✅ Extend forward only while the new mean stays >= base avg
     while end_idx < n - 1:
-        new_sum = base_sum + p[end_idx + 1]
-        new_len = base_len + 1
-        new_mean = new_sum / new_len
-        if new_mean + base_avg * equality_tolerance >= base_avg:
-            base_sum, base_len, base_avg = new_sum, new_len, new_mean
+        next_mean = (base_sum + p[end_idx + 1]) / (base_len + 1)
+        if next_mean + base_avg * equality_tolerance >= base_avg:
+            base_sum += p[end_idx + 1]
+            base_len += 1
             end_idx += 1
+            base_avg = next_mean
         else:
             break
 
@@ -140,6 +150,7 @@ def find_best_effort(df: pd.DataFrame, duration_s: int, equality_tolerance: floa
         "start_idx": int(start_idx),
         "end_idx": int(end_idx),
     }
+
 
 # ------------------------------
 # Best-effort (distance-based, prefer watch distance then stryd)
