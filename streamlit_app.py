@@ -148,19 +148,19 @@ if run_analysis:
                                         long_seg["avg_power"],  long_seg["found_dur"])
         st.success(f"**Critical Power:** {cp:.1f} W | **W′:** {w_prime/1000:.2f} kJ")
 
-        # ---------- 5K Test ----------
-        elif mode == "5K Test":
-            try:
-                if fivek_mode == "Distance":
-                    seg = find_best_distance_effort(df, float(fivek_distance))
-                    label = "5K (distance)"
-                else:
-                    seg = find_best_effort(df, int(fivek_minutes * 60))
-                    label = "5K (duration)"
-                segments = [(label, seg)]
-            except RuntimeError as e:
-                st.error(f"❌ {str(e)} Please select a shorter target duration or use a longer activity file.")
-                st.stop()
+    # ---------- 5K Test ----------
+    elif mode == "5K Test":
+        try:
+            if fivek_mode == "Distance":
+                seg = find_best_distance_effort(df, float(fivek_distance))
+                label = "5K (distance)"
+            else:
+                seg = find_best_effort(df, int(fivek_minutes * 60))
+                label = "5K (duration)"
+            segments = [(label, seg)]
+        except RuntimeError as e:
+            st.error(f"❌ {str(e)} Please select a shorter target duration or use a longer activity file.")
+            st.stop()
 
 
         pdc_df = compute_power_duration_curve(df, max_duration_s=3600, step=5)
