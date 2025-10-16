@@ -198,6 +198,87 @@ def detect_best_test_segments(df: pd.DataFrame, expected_durations=(180, 720), t
             })
     return segments
 
+def detect_stable_blocks(
+    df: pd.DataFrame,
+    max_std_ratio: float = 0.05,
+    min_duration_sec: int = 60,
+    smooth_window_sec: int = 5,
+    sampling_rate: int = 1,
+    weight_kg: float | None = None,
+):
+    """
+    Identify stable-power blocks where rolling_std/rolling_mean <= max_std_ratio.
+    Returns a list of dicts with stats:
+    start_idx, end_idx, duration_s, avg_power, distance_m, pace_per_km, RE, start_elapsed, end_elapsed.
+    """
+    df = normalize_columns(df)
+    for col in ["power", "watch distance (meters)", "timestamp"]:
+        if col not in df.columns:
+            raise ValueError(f"Missing column: {col}")
+
+    window = int(max(1, smooth_window_sec) * sampling_rate)
+    roll_mean = df["power"].rolling(window=window, min_periods=1).mean()
+    roll_std = df["power"].rolling(window=window, min_periods=1).std()
+    ratio = (roll_std / roll_mean).fillna(0)
+    stable = (ratio <= max_std_ratio).to_numpy()
+
+    dist = pd.to_numeric(df["watch distance (meters)"], errors="coerce").ffill().to_numpy(dtype=float)
+    times = pd.to_datetime(df["timestamp"], errors="coerce").reset_index(drop=True)
+    t0 = times.iloc[0]
+    smooth_power = roll_mean.to_numpy(dtype=float)
+
+    blocks = []
+    n = len(df)
+    start = None
+
+    for i in range(n):
+        if stable[i]:
+            if start is None:
+                start = i
+        else:
+            if start is not None:
+                end = i - 1
+                dur = (end - start + 1) / sampling_rate
+                if dur >= min_duration_sec:
+                    avg_p = float(np.nanmean(smooth_power[start:end + 1]))
+                    distance_m = float(dist[end] - dist[start])
+                    pace_per_km = (dur / (distance_m / 1000.0)) if distance_m > 0 else None
+                    RE = running_effectiveness(distance_m, dur, avg_p, weight_kg)
+                    blocks.append({
+                        "start_idx": start,
+                        "end_idx": end,
+                        "start_elapsed": (times.iloc[start] - t0).total_seconds(),
+                        "end_elapsed": (times.iloc[end] - t0).total_seconds(),
+                        "duration_s": dur,
+                        "avg_power": avg_p,
+                        "distance_m": distance_m,
+                        "pace_per_km": pace_per_km,
+                        "RE": RE,
+                    })
+                start = None
+
+    if start is not None:
+        end = n - 1
+        dur = (end - start + 1) / sampling_rate
+        if dur >= min_duration_sec:
+            avg_p = float(np.nanmean(smooth_power[start:end + 1]))
+            distance_m = float(dist[end] - dist[start])
+            pace_per_km = (dur / (distance_m / 1000.0)) if distance_m > 0 else None
+            RE = running_effectiveness(distance_m, dur, avg_p, weight_kg)
+            blocks.append({
+                "start_idx": start,
+                "end_idx": end,
+                "start_elapsed": (times.iloc[start] - t0).total_seconds(),
+                "end_elapsed": (times.iloc[end] - t0).total_seconds(),
+                "duration_s": dur,
+                "avg_power": avg_p,
+                "distance_m": distance_m,
+                "pace_per_km": pace_per_km,
+                "RE": RE,
+            })
+
+    return sorted(blocks, key=lambda x: x["start_elapsed"])
+
 
 def infer_test_type_from_pdc(df: pd.DataFrame):
     """
