@@ -102,7 +102,7 @@ def _get_distance_series(df: pd.DataFrame) -> pd.Series | None:
 # ------------------------------
 # Best-effort (exact duration then extend forward if avg stays >= base)
 # ------------------------------
-def find_best_effort(df: pd.DataFrame, duration_s: int, equality_tolerance: float = 0.001):
+def find_best_effort(df: pd.DataFrame, duration_s: int, equality_tolerance: float = 0):
     """
     Find the best effort of at least `duration_s` seconds.
     1. Finds the highest average power over the exact duration.
