@@ -166,7 +166,6 @@ def detect_best_test_segments(df: pd.DataFrame, expected_durations=(180, 720), t
     Find the best power segments around expected durations (± tolerance),
     then extend them if the average power remains stable.
     """
-    from .cp_utils import extend_best_segment  # or relative import if inside same file
 
     df = normalize_columns(df).copy()
     if "power" not in df.columns:
@@ -186,8 +185,10 @@ def detect_best_test_segments(df: pd.DataFrame, expected_durations=(180, 720), t
                 e_idx = int(roll.idxmax())
                 s_idx = max(0, e_idx - d + 1)
         if best_pow > 0:
-            # extend segment for stability
-            best_pow, s_idx, e_idx, new_dur = extend_best_segment(df, s_idx, e_idx, best_pow, max_extend=int(dur * 0.2))
+            # directly call extend_best_segment (same file)
+            best_pow, s_idx, e_idx, new_dur = extend_best_segment(
+                df, s_idx, e_idx, best_pow, max_extend=int(dur * 0.2)
+            )
             segments.append({
                 "target_dur": dur,
                 "found_dur": new_dur,
@@ -196,7 +197,6 @@ def detect_best_test_segments(df: pd.DataFrame, expected_durations=(180, 720), t
                 "end_idx": e_idx
             })
     return segments
-
 
 
 def infer_test_type_from_pdc(df: pd.DataFrame):
