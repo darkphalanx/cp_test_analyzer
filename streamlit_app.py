@@ -150,40 +150,75 @@ if run_analysis:
 
     # ---------- 5K Test ----------
     elif mode == "5K Test":
-        try:
-            if fivek_mode == "Distance":
-                seg = find_best_distance_effort(df, float(fivek_distance))
-                label = "5K (distance)"
-            else:
-                seg = find_best_effort(df, int(fivek_minutes * 60))
-                label = "5K (duration)"
-            segments = [(label, seg)]
-        except RuntimeError as e:
-            st.error(f"❌ {str(e)} Please select a shorter target duration or use a longer activity file.")
-            st.stop()
+        # --- Handle distance or duration mode ---
+        if fivek_mode == "Distance":
+            # Try to detect the best distance column
+            dist_col = (find_col_contains(df, "watch distance") or
+                        find_col_contains(df, "distance (m)") or
+                        find_col_contains(df, "stryd distance (m)") or
+                        find_col_contains(df, "distance_m") or
+                        find_col_contains(df, "distance"))
 
+            if dist_col is not None:
+                dist_series = pd.to_numeric(df[dist_col], errors="coerce").ffill()
+                total_dist = float(dist_series.max() - dist_series.min())
+                if total_dist < fivek_distance:
+                    st.warning(
+                        f"⚠️ Activity shorter than target distance "
+                        f"({total_dist:.0f} m available, {fivek_distance:.0f} m requested). "
+                        f"Using full activity distance instead."
+                    )
+                    fivek_distance = total_dist
 
+            seg = find_best_distance_effort(df, float(fivek_distance))
+            label = f"5 K (distance – capped to {fivek_distance:.0f} m)"
+
+        else:  # Duration mode
+            target_s = int(fivek_minutes * 60)
+            n = len(df)
+            if n < target_s:
+                st.warning(
+                    f"⚠️ Activity shorter than target duration "
+                    f"({n}s available, {target_s}s requested). "
+                    f"Using full activity length instead."
+                )
+                target_s = n
+            seg = find_best_effort(df, target_s)
+            label = f"5 K (duration – capped to {target_s // 60:.1f} min)"
+
+        segments = [(label, seg)]
+
+        # --- Power Duration Curve ---
         pdc_df = compute_power_duration_curve(df, max_duration_s=3600, step=5)
         fig_pdc = go.Figure()
-        fig_pdc.add_trace(go.Scatter(x=pdc_df["duration_s"], y=pdc_df["best_power_w"],
-                                     mode="lines+markers", name="PDC",
-                                     hovertemplate="Duration %{x}s<br>Power %{y:.1f}W<extra></extra>"))
+        fig_pdc.add_trace(go.Scatter(
+            x=pdc_df["duration_s"], y=pdc_df["best_power_w"],
+            mode="lines+markers", name="PDC",
+            hovertemplate="Duration %{x}s<br>Power %{y:.1f} W<extra></extra>"
+        ))
         for label, sdict in segments:
-            fig_pdc.add_vline(x=sdict["found_dur"], line=dict(color="orange", width=2, dash="dash"),
-                              annotation_text=f"{sdict['found_dur']}s", annotation_position="top right")
+            fig_pdc.add_vline(
+                x=sdict["found_dur"],
+                line=dict(color="orange", width=2, dash="dash"),
+                annotation_text=f"{sdict['found_dur']} s",
+                annotation_position="top right"
+            )
         fig_pdc.update_layout(title="Power Duration Curve", template="plotly_white", height=420)
         st.plotly_chart(fig_pdc, use_container_width=True)
 
+        # --- Power-over-time chart ---
         elapsed_s = (df["timestamp"] - df["timestamp"].iloc[0]).dt.total_seconds()
         fig_time = go.Figure()
         fig_time.add_trace(go.Scatter(x=elapsed_s, y=df["power"], mode="lines", opacity=0.4, name="Power"))
         color = "rgba(255,165,0,0.35)"
         x0, x1 = float(elapsed_s.iloc[seg["start_idx"]]), float(elapsed_s.iloc[seg["end_idx"]])
         fig_time.add_vrect(x0=x0, x1=x1, fillcolor=color, opacity=0.3, line_width=0)
-        fig_time.add_annotation(x=(x0+x1)/2, y=float(df["power"].max()), text=label, showarrow=False, yanchor="bottom")
+        fig_time.add_annotation(x=(x0 + x1) / 2, y=float(df["power"].max()),
+                                text=label, showarrow=False, yanchor="bottom")
         fig_time.update_layout(title="Detected Segment", template="plotly_white", height=420)
         st.plotly_chart(fig_time, use_container_width=True)
 
+        # --- Stats table ---
         dist_col = (find_col_contains(df, "watch distance") or
                     find_col_contains(df, "distance (m)") or
                     find_col_contains(df, "stryd distance (m)") or
@@ -208,9 +243,11 @@ if run_analysis:
         })
         st.dataframe(pd.DataFrame(rows), use_container_width=True)
 
+        # --- CP estimate range ---
         cp_range = compute_cp_5k_range(seg["avg_power"])
         cp_min, cp_mid, cp_max = min(cp_range.values()), list(cp_range.values())[1], max(cp_range.values())
         st.info(f"**Estimated CP (range):** {cp_min:.1f} – {cp_max:.1f} W  |  Typical ≈ {cp_mid:.1f} W")
+
 
     # ---------- Segment Analysis ----------
     else:
