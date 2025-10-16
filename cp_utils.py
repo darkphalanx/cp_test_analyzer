@@ -161,7 +161,7 @@ def compute_power_duration_curve(df: pd.DataFrame, max_duration_s: int = 3600, s
 #  New: Test Detection & Segment Extraction
 # ============================================================
 
-def detect_best_test_segments(df: pd.DataFrame, expected_durations=(180, 720), tolerance: float = 0.1):
+def detect_best_test_segments(df: pd.DataFrame, expected_durations=(180, 720), tolerance: float = 0.2):
     """
     Find the best power segments around expected durations (± tolerance),
     then extend them if the average power remains stable.
