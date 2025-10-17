@@ -45,7 +45,7 @@ def format_seconds(seconds):
 # ------------------------------
 with st.sidebar:
     st.header("⚙️ Settings")
-    uploaded_file = st.file_uploader("📁 Upload CSV (Garmin/Stryd export)", type=["csv"])
+    uploaded_file = st.file_uploader("📁 Upload CSV (Stryd export)", type=["csv"])
     stryd_weight = st.number_input("⚖️ Stryd Weight (kg)", min_value=40.0, max_value=120.0, value=76.0, step=0.1)
 
     mode = st.radio("Choose Analysis Type", ["Critical Power Test", "5K Test", "Segment Analysis"], index=0)
@@ -154,72 +154,95 @@ if run_analysis:
         cp, w_prime = compute_cp_linear(short_seg["avg_power"], short_seg["found_dur"], long_seg["avg_power"],  long_seg["found_dur"])
         st.success(f"**Critical Power:** {cp:.1f} W | **W′:** {w_prime/1000:.2f} kJ")
 
-    # ---------- 5K Test ----------
-    elif mode == "5K Test":
-        dist_col = (find_col_contains(df, "watch distance") or find_col_contains(df, "distance (m)") or find_col_contains(df, "stryd distance (m)") or find_col_contains(df, "distance_m") or find_col_contains(df, "distance"))
-        if fivek_mode == "Distance":
-            if dist_col is not None:
-                dist_series = pd.to_numeric(df[dist_col], errors="coerce").ffill()
-                total_dist = float(dist_series.max() - dist_series.min())
-                if total_dist < fivek_distance:
-                    st.warning(f"⚠️ Activity shorter than target distance ({total_dist:.0f} m available, {fivek_distance:.0f} m requested). Using full activity distance instead.")
-                    fivek_distance = total_dist
-            seg = find_best_distance_effort(df, float(fivek_distance))
-            label = f"5 K (distance – capped to {fivek_distance:.0f} m)"
-        else:
-            target_s = int(fivek_minutes * 60)
-            n = len(df)
-            if n < target_s:
-                st.warning(f"⚠️ Activity shorter than target duration ({n}s available, {target_s}s requested). Using full activity length instead.")
-                target_s = n
-            seg = find_best_effort(df, target_s)
-            label = f"5 K (duration – capped to {format_duration(target_s)})"
+    # ==============================================================
+    # Single-Effort Critical Power Estimate (Distance- or Duration-based)
+    # ==============================================================
+    else:
+        # Parameters
+        MIN_DISTANCE_M = 5000      # absolute lower limit
+        MAX_DISTANCE_M = 21000     # upper safeguard (~half marathon)
+        MIN_DURATION_S = 600       # 10 min
+        MAX_DURATION_S = 2400      # 40 min
 
-        segments = [(label, seg)]
-        pdc_df = compute_power_duration_curve(df, max_duration_s=3600, step=5)
-        pdc_df["formatted_dur"] = pdc_df["duration_s"].apply(format_seconds)
-        fig_pdc = go.Figure()
-        fig_pdc.add_trace(go.Scatter(
-            x=pdc_df["duration_s"],
-            y=pdc_df["best_power_w"],
-            mode="lines+markers",
-            name="PDC",
-            customdata=np.stack((pdc_df["formatted_dur"], pdc_df["duration_s"]), axis=-1),
-            hovertemplate="Duration %{customdata[0]} (%{customdata[1]} s)<br>Avg Power %{y:.1f} W<extra></extra>"
-        ))
-        for label, sdict in segments:
-            fig_pdc.add_vline(x=sdict["found_dur"], line=dict(color="orange", width=2, dash="dash"), annotation_text=f"{format_duration(sdict['found_dur'])}", annotation_position="top right")
-        tick_count = min(10, len(pdc_df))
-        tickvals = np.linspace(pdc_df["duration_s"].min(), pdc_df["duration_s"].max(), tick_count).astype(int)
-        fig_pdc.update_xaxes(title="Duration (hh:mm:ss)", tickvals=tickvals, ticktext=[format_seconds(s) for s in tickvals])
-        st.plotly_chart(fig_pdc, use_container_width=True)
+        # --- Find best segment ---
+        best5k, s5k, e5k = best_power_for_distance(df, 5000)
+        ext5k = extend_best_segment(df, s5k, e5k, best5k)
+        t5k = int(ext5k[3])
+        avg_pow = ext5k[0]
 
-        elapsed_s = (df["timestamp"] - df["timestamp"].iloc[0]).dt.total_seconds()
-        fig_time = go.Figure()
-        fig_time.add_trace(go.Scatter(x=elapsed_s, y=df["power"], mode="lines", opacity=0.4, name="Power"))
-        color = "rgba(255,165,0,0.35)"
-        x0, x1 = float(elapsed_s.iloc[seg["start_idx"]]), float(elapsed_s.iloc[seg["end_idx"]])
-        fig_time.add_vrect(x0=x0, x1=x1, fillcolor=color, opacity=0.3, line_width=0)
-        fig_time.add_annotation(x=(x0+x1)/2, y=float(df["power"].max()), text=label, showarrow=False, yanchor="bottom")
-        tick_count = min(10, len(elapsed_s))
-        tickvals = np.linspace(elapsed_s.min(), elapsed_s.max(), tick_count)
-        fig_time.update_xaxes(title="Elapsed Time (hh:mm:ss)", tickvals=tickvals, ticktext=[format_seconds(s) for s in tickvals])
-        st.plotly_chart(fig_time, use_container_width=True)
+        # --- Determine distance column ---
+        dist_col = None
+        for c in df.columns:
+            if "watch distance" in c.lower() or "stryd distance" in c.lower():
+                dist_col = c
+                break
 
-        start, end = seg["start_idx"], seg["end_idx"]
-        distance_m = np.nan
         if dist_col:
-            dist_series = pd.to_numeric(df[dist_col], errors="coerce").ffill()
-            if dist_series.notna().any():
-                distance_m = float(dist_series.iloc[end] - dist_series.iloc[start])
-        RE = None
-        if not np.isnan(distance_m) and distance_m > 0:
-            RE = running_effectiveness(distance_m, seg["found_dur"], seg["avg_power"], stryd_weight)
-        st.dataframe(pd.DataFrame([{ "Segment": label, "Duration": format_duration(seg["found_dur"]), "Avg Power (W)": f"{seg['avg_power']:.1f}", "Distance (m)": f"{distance_m:.0f}" if not np.isnan(distance_m) else "–", "RE": f"{RE:.3f}" if RE else "–" }]), use_container_width=True)
+            df["dist"] = pd.to_numeric(df[dist_col], errors="coerce").ffill()
+            actual_distance = df.loc[ext5k[2], "dist"] - df.loc[ext5k[1], "dist"]
+        else:
+            actual_distance = 5000
 
-        cp_range = compute_cp_5k_range(seg["avg_power"])
-        cp_min, cp_mid, cp_max = min(cp_range.values()), list(cp_range.values())[1], max(cp_range.values())
-        st.info(f"**Estimated CP (range):** {cp_min:.1f} – {cp_max:.1f} W  |  Typical ≈ {cp_mid:.1f} W")
+        pace_per_km = timedelta(seconds=int(t5k / (actual_distance / 1000)))
+
+        # --- Duration range warning ---
+        if t5k < MIN_DURATION_S or t5k > MAX_DURATION_S:
+            st.warning(
+                f"Detected effort duration ({t5k/60:.1f} min) is outside the "
+                f"typical 10–40 min range. CP estimate may be less reliable."
+            )
+
+        # --- Segment Analysis ---
+        st.subheader("Segment Analysis")
+        seg_data = {
+            "Segment": ["Best Sustained Effort"],
+            "Distance (m)": [f"{actual_distance:.0f}"],
+            "Duration": [str(timedelta(seconds=t5k))],
+            "Pace (/km)": [str(pace_per_km)],
+            "Avg Power (W)": [f"{avg_pow:.1f}"],
+        }
+        st.dataframe(pd.DataFrame(seg_data), width='stretch')
+
+        # --- Caption explaining distance extension ---
+        st.caption(
+            "The algorithm searches for your strongest continuous effort of "
+            "at least 5 000 m and may include extra distance if your power "
+            "did not drop. Efforts shorter than 10 min or longer than 40 min "
+            "are flagged as less reliable."
+        )
+
+        # --- Critical Power estimation ---
+        st.subheader("Critical Power Profiles")
+        cp_results = compute_cp_5k_range(avg_pow)
+
+        st.markdown("""
+        Each profile represents a different **fatigue characteristic**.  
+        Choose the one that best matches your physiology:
+        """)
+
+        cp_table = pd.DataFrame(
+            {
+                "Profile": ["Aerobic", "Balanced", "Anaerobic"],
+                "CP (W)": [f"{cp:.1f}" for cp in cp_results.values()],
+                "Scaling": ["98.5%", "97.5%", "96.5%"],
+                "Trait": [
+                    "Endurance-focused",
+                    "Typical distance runner",
+                    "Power-focused",
+                ],
+            }
+        )
+        st.dataframe(cp_table, width='stretch', hide_index=True)
+
+        cp_min = min(cp_results.values())
+        cp_max = max(cp_results.values())
+        cp_mid = list(cp_results.values())[1]  # Balanced profile
+
+        st.markdown(
+            f"**Estimated CP range:** {cp_min:.1f} – {cp_max:.1f} W "
+            f"(typical profile ≈ {cp_mid:.1f} W)"
+        )
+
 
     # ---------- Segment Analysis ----------
     else:
