@@ -22,7 +22,7 @@ st.set_page_config(page_title="Critical Power Analyzer v8", page_icon="⚡", lay
 # ------------------------------
 with st.sidebar:
     st.header("⚙️ Settings")
-    uploaded_file = st.file_uploader("📁 Upload CSV (Garmin/Stryd export)", type=["csv"])
+    uploaded_file = st.file_uploader("📁 Upload CSV (Stryd export)", type=["csv"])
     stryd_weight = st.number_input("⚖️ Stryd Weight (kg)", min_value=40.0, max_value=120.0, value=76.0, step=0.1)
 
     mode = st.radio("Choose Analysis Type", ["Critical Power Test", "Single-Effort CP Estimate", "Segment Analysis"], index=0)
