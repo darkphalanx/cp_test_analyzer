@@ -278,7 +278,7 @@ if run_analysis:
             for idx, b in enumerate(blocks):
                 x0, x1 = float(elapsed_s.iloc[b["start_idx"]]), float(elapsed_s.iloc[b["end_idx"]])
                 fig2.add_vrect(x0=x0, x1=x1, fillcolor=palette[idx % len(palette)], opacity=0.25, line_width=0)
-                fig2.add_annotation(x=(x0+x1)/2, y=float(df["power"].max()), text=f"B{idx+1}", showarrow=False, yanchor="bottom")
+                fig2.add_annotation(x=(x0+x1)/2, y=float(df["power"].max()), text=f"B{idx}", showarrow=False, yanchor="bottom")
 
             fig2.update_layout(title="Power over Time (Stable Blocks)", template="plotly_white", height=460)
             st.plotly_chart(fig2, use_container_width=True)
