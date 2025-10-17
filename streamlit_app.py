@@ -10,7 +10,7 @@ import numpy as np
 
 st.set_page_config(page_title="Critical Power Analysis Tool", layout="wide")
 
-# --- App Title ---ssssssssssssssss
+# --- App Title ---
 st.title("⚡ Critical Power Analysis Tool")
 st.caption("Analyze your running power data to estimate Critical Power (CP) and W′.")
 
