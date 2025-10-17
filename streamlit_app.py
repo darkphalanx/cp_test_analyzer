@@ -243,7 +243,6 @@ if run_analysis:
             f"(typical profile ≈ {cp_mid:.1f} W)"
         )
 
-
     # ---------- Segment Analysis ----------
     else:
         pdc_df = compute_power_duration_curve(df, max_duration_s=3600, step=5)
