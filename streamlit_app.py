@@ -187,7 +187,7 @@ if run_analysis:
             seg = find_best_effort(df, target_s)
             label = f"Sustained Effort ≥ {fivek_minutes:.1f} min"
             st.caption("The algorithm searches for your strongest continuous effort "
-                       "of at least 10 min and may include extra duration if your power remains stable.")
+                       "and may include extra duration if your power remains stable.")
 
         if seg["found_dur"] < MIN_DURATION_S or seg["found_dur"] > MAX_DURATION_S:
             st.warning(
@@ -253,14 +253,19 @@ if run_analysis:
         else:
             rows = []
             for b in blocks:
+                # Format duration as hh:mm:ss
+                dur_sec = int(b["duration_s"])
+                dur_fmt = f"{dur_sec // 3600:02d}:{(dur_sec % 3600) // 60:02d}:{dur_sec % 60:02d}"
+
                 pace = f"{int(b['pace_per_km']//60):02d}:{int(b['pace_per_km']%60):02d}" if b['pace_per_km'] else "–"
                 rows.append({
-                    "Duration (s)": int(b["duration_s"]),
+                    "Duration": dur_fmt,
                     "Avg Power (W)": f"{b['avg_power']:.1f}",
                     "Distance (m)": f"{b['distance_m']:.0f}",
                     "Pace (/km)": pace,
                     "RE": f"{b['RE']:.3f}" if b.get("RE") else "–",
                 })
+
             st.dataframe(pd.DataFrame(rows), use_container_width=True)
 
             elapsed_s = (df["timestamp"] - df["timestamp"].iloc[0]).dt.total_seconds()
