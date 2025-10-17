@@ -104,7 +104,7 @@ if run_analysis:
             fig_pdc.add_vline(x=seg["found_dur"], line=dict(color="orange", width=2, dash="dash"),
                               annotation_text=f"{label} {seg['found_dur']}s", annotation_position="top right")
         fig_pdc.update_layout(title="Power Duration Curve", template="plotly_white", height=420)
-        st.plotly_chart(fig_pdc, width='stretch')
+        st.plotly_chart(fig_pdc, use_container_width=True)
 
         elapsed_s = (df["timestamp"] - df["timestamp"].iloc[0]).dt.total_seconds()
         fig_time = go.Figure()
@@ -115,7 +115,7 @@ if run_analysis:
             fig_time.add_vrect(x0=x0, x1=x1, fillcolor=color, opacity=0.3, line_width=0)
             fig_time.add_annotation(x=(x0+x1)/2, y=float(df["power"].max()), text=label, showarrow=False, yanchor="bottom")
         fig_time.update_layout(title="Detected Segments", template="plotly_white", height=420)
-        st.plotly_chart(fig_time, width='stretch')
+        st.plotly_chart(fig_time, use_container_width=True)
 
         # Stats table
         dist_col = (find_col_contains(df, "watch distance") or
@@ -141,7 +141,7 @@ if run_analysis:
                 "Distance (m)": f"{distance_m:.0f}" if not np.isnan(distance_m) else "–",
                 "RE": f"{RE:.3f}" if RE else "–",
             })
-        st.dataframe(pd.DataFrame(rows), width='stretch')
+        st.dataframe(pd.DataFrame(rows), use_container_width=True)
 
         cp, w_prime = compute_cp_linear(short_seg["avg_power"], short_seg["found_dur"],
                                         long_seg["avg_power"],  long_seg["found_dur"])
@@ -205,7 +205,7 @@ if run_analysis:
         fig_time.add_annotation(x=(x0 + x1) / 2, y=float(df["power"].max()),
                                 text=label, showarrow=False, yanchor="bottom")
         fig_time.update_layout(title="Detected Segment", template="plotly_white", height=420)
-        st.plotly_chart(fig_time, width='stretch')
+        st.plotly_chart(fig_time, use_container_width=True)
 
         dist_col = (find_col_contains(df, "watch distance") or
                     find_col_contains(df, "distance (m)") or
@@ -230,7 +230,7 @@ if run_analysis:
             "RE": f"{RE:.3f}" if RE else "–",
         })
         st.subheader("Segment Analysis")
-        st.dataframe(pd.DataFrame(rows), width='stretch')
+        st.dataframe(pd.DataFrame(rows), use_container_width=True)
 
         cp_range = compute_cp_5k_range(seg["avg_power"])
         cp_min, cp_mid, cp_max = min(cp_range.values()), list(cp_range.values())[1], max(cp_range.values())
@@ -244,7 +244,7 @@ if run_analysis:
                                  mode="lines+markers", name="PDC",
                                  hovertemplate="Duration %{x}s<br>Power %{y:.1f}W<extra></extra>"))
         fig.update_layout(title="Power Duration Curve", template="plotly_white", height=420)
-        st.plotly_chart(fig, width='stretch')
+        st.plotly_chart(fig, use_container_width=True)
 
         blocks = detect_stable_blocks(df, max_std_ratio=max_std, min_duration_sec=min_block,
                                       smooth_window_sec=smooth_window, weight_kg=stryd_weight)
@@ -266,7 +266,7 @@ if run_analysis:
                     "RE": f"{b['RE']:.3f}" if b.get("RE") else "–",
                 })
 
-            st.dataframe(pd.DataFrame(rows), width='stretch')
+            st.dataframe(pd.DataFrame(rows), use_container_width=True)
 
             elapsed_s = (df["timestamp"] - df["timestamp"].iloc[0]).dt.total_seconds()
             smooth_power = df["power"].rolling(window=max(1, smooth_window), min_periods=1).mean()
@@ -281,4 +281,4 @@ if run_analysis:
                 fig2.add_annotation(x=(x0+x1)/2, y=float(df["power"].max()), text=f"B{idx}", showarrow=False, yanchor="bottom")
 
             fig2.update_layout(title="Power over Time (Stable Blocks)", template="plotly_white", height=460)
-            st.plotly_chart(fig2, width='stretch')
+            st.plotly_chart(fig2, use_container_width=True)
