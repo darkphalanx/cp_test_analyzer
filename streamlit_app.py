@@ -244,7 +244,7 @@ if run_analysis:
         )
 
     # ---------- Segment Analysis ----------
-    else:
+    elif:
         pdc_df = compute_power_duration_curve(df, max_duration_s=3600, step=5)
         pdc_df["formatted_dur"] = pdc_df["duration_s"].apply(format_seconds)
         fig = go.Figure()
